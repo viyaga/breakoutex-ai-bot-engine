@@ -112,7 +112,7 @@ export class Data {
     ): Promise<ConfigType[]> {
         const { limit, offset } = params;
 
-        const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/delta?limit=${limit}&offset=${offset}`;
+        const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/delta?limit=${limit}&offset=${offset}&serverIp=${env.serverIp}`;
 
         tradingCronLogger.info(`[fetchTradingConfigs] Fetching bots from: ${url}`);
         const res = await fetch(url);
