@@ -119,8 +119,28 @@ export class TradingV2 {
 
         cronLogger.info(`[TradingCycle] ========== START PROCESSING BOT: ${symbol} (ID: ${tradingBotId}) ==========`);
 
-
         try {
+            // ───────────────── SYNC LEVERAGE ─────────────────
+            cronLogger.info(`[LeverageSync] Checking leverage for product ${c.PRODUCT_ID}...`);
+            const leverageData = await deltaExchange.getOrderLeverage(c.PRODUCT_ID);
+            if (leverageData && leverageData.success && leverageData.result) {
+                const currentLeverage = leverageData.result.leverage;
+                cronLogger.info(`[LeverageSync] Current leverage on Delta: ${currentLeverage}, Configured leverage: ${c.LEVERAGE}`);
+                if (Number(currentLeverage) !== Number(c.LEVERAGE)) {
+                    cronLogger.info(`[LeverageSync] Leverage mismatch. Changing leverage to ${c.LEVERAGE}...`);
+                    const changeRes = await deltaExchange.changeOrderLeverage(c.PRODUCT_ID, c.LEVERAGE);
+                    if (changeRes && changeRes.success) {
+                        cronLogger.info(`[LeverageSync] Leverage changed successfully to ${c.LEVERAGE}`);
+                    } else {
+                        cronLogger.warn(`[LeverageSync] Failed to change leverage: ${JSON.stringify(changeRes)}`);
+                    }
+                } else {
+                    cronLogger.info(`[LeverageSync] Leverage is already set correctly to ${c.LEVERAGE}`);
+                }
+            } else {
+                cronLogger.warn(`[LeverageSync] Failed to retrieve leverage: ${JSON.stringify(leverageData)}`);
+            }
+
             // ───────────────── MARKET DATA ─────────────────
             const targetDataEntry = await TradingV2.getTargetCandle(c, 'ENTRY');
             const targetDataConfirmation = await TradingV2.getTargetCandle(c, 'CONFIRMATION');
@@ -184,7 +204,7 @@ export class TradingV2 {
             if (mtf.isAllowed) {
                 detectorLogger.info(`[MTF-ALLOWED] ${symbol}: Price Levels target: TP=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), SL=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), Net RR=${mtf.rr.toFixed(2)}`);
                 cronLogger.info(`[MTF] Price Levels target: TP=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), SL=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), Net RR=${mtf.rr.toFixed(2)}`);
-                
+
                 // Log to separate file for MTF allowed trades
                 mtfAllowedFileLogger.info(`[ALLOWED] ${symbol} | Score: ${mtf.finalScore} (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability}) | TP: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | RR: ${mtf.rr.toFixed(2)} | Dir: ${mtf.direction}`);
             }
@@ -408,11 +428,11 @@ export class TradingV2 {
             // We also clear status/isActive so we don't accidentally overwrite backend state with old error status
             await BotError.findOneAndUpdate(
                 { botId: tradingBotId },
-                { 
-                    message: "", 
-                    status: 'active', 
-                    isActive: true, 
-                    updatedAt: new Date() 
+                {
+                    message: "",
+                    status: 'active',
+                    isActive: true,
+                    updatedAt: new Date()
                 },
                 { upsert: true }
             );
@@ -449,9 +469,9 @@ export class TradingV2 {
                 cronLogger.error(`[TradingCycle] Specific Error Detected: ${errorMessage}`);
                 await BotError.findOneAndUpdate(
                     { botId: tradingBotId },
-                    { 
-                        message: errorMessage, 
-                        status: shouldStop ? 'stopped' : undefined, 
+                    {
+                        message: errorMessage,
+                        status: shouldStop ? 'stopped' : undefined,
                         isActive: shouldStop ? false : undefined,
                         updatedAt: new Date()
                     },
@@ -462,8 +482,8 @@ export class TradingV2 {
                 cronLogger.error(`[TradingCycle] Unknown Error: ${errorStr}`);
                 await BotError.findOneAndUpdate(
                     { botId: tradingBotId },
-                    { 
-                        message: `System Error: ${errorStr.substring(0, 100)}...`, 
+                    {
+                        message: `System Error: ${errorStr.substring(0, 100)}...`,
                         // Don't update status/isActive for unknown errors to avoid false deactivations
                         updatedAt: new Date()
                     },

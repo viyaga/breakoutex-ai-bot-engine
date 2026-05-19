@@ -263,6 +263,14 @@ export class DeltaExchange {
 
         return { success: false, ids: { tp: "", sl: "" } };
     }
+
+    async getOrderLeverage(productId: number | string): Promise<{ success: boolean; result?: { leverage: number; order_margin: string; product_id: number } }> {
+        return this.signedRequest("GET", `/products/${productId}/orders/leverage`);
+    }
+
+    async changeOrderLeverage(productId: number | string, leverage: number): Promise<{ success: boolean; result?: { leverage: number; order_margin: string; product_id: number } }> {
+        return this.signedRequest("POST", `/products/${productId}/orders/leverage`, { leverage });
+    }
 }
 
 export const deltaExchange = new DeltaExchange();
