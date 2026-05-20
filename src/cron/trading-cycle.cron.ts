@@ -53,9 +53,14 @@ const tradingCycleCronJob = (): void => {
                     const executing = new Set<Promise<any>>();
 
                     for (const cfg of cfgs) {
-                        const p: any = (async () => {
+                        const p = (async () => {
                             tradingCronLogger.info(`[TradingCron] Starting cycle for config: ${cfg.id} (${cfg.SYMBOL})`);
-                            return TradingConfig.configStore.run(cfg, () => TradingV2.runTradingCycle(cfg));
+                            try {
+                                const res = await TradingConfig.configStore.run(cfg, () => TradingV2.runTradingCycle(cfg));
+                                return { status: 'fulfilled' as const, value: res };
+                            } catch (err) {
+                                return { status: 'rejected' as const, reason: err };
+                            }
                         })();
 
                         results.push(p);
@@ -66,7 +71,7 @@ const tradingCycleCronJob = (): void => {
                             await Promise.race(executing);
                         }
                     }
-                    return Promise.allSettled(results);
+                    return Promise.all(results);
                 };
 
                 const results = await processWithLimit(configs);
