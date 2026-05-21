@@ -22,8 +22,7 @@ export default function engineAuth(req: Request, res: Response, next: NextFuncti
     if (!payload?.roles?.includes('engine')) {
       return res.status(403).json({ error: 'Insufficient role' })
     }
-    // Attach minimal user info for any downstream Local API usage
-    req.user = { id: payload.sub, email: payload.email, roles: payload.roles }
+(req as any).user = { id: payload.sub, email: payload.email, roles: payload.roles }
     next()
   } catch (err) {
     console.error('Engine JWT verification failed', err)
