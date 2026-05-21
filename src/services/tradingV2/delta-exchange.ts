@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { TradingConfig } from "./config";
 import { Utils } from "./utils";
 import { tradingCycleErrorLogger, tradingCronLogger, getContextualLogger } from "./logger";
+tradingCronLogger.debug('Searched for "DeltaExchange"');
 import { CancelAllOrdersFilter, CancelAllOrdersPayload, OrderDetails, OrderSide, Position, TickerData } from "./type";
 
 export class DeltaExchange {

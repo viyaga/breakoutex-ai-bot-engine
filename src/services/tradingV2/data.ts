@@ -114,15 +114,17 @@ export class Data {
 
         const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/delta?limit=${limit}&offset=${offset}&serverIp=${env.serverIp}`;
 
-        tradingCronLogger.info(`[fetchTradingConfigs] Fetching bots from: ${url}`);
-        const res = await fetch(url);
-
-        if (!res.ok) {
-            throw new Error(`[fetchTradingConfigs] Failed (${res.status})`);
-        }
-
-        const bots = (await res.json()) as ActiveSubscribedBot[];
-        tradingCronLogger.info(`[fetchTradingConfigs] API returned ${Array.isArray(bots) ? bots.length : 'non-array'} bots`);
+        let bots: ActiveSubscribedBot[] = [];
+try {
+  const res = await fetch(url);
+  if (!res.ok) {
+    tradingCronLogger.warn(`[fetchTradingConfigs] HTTP ${res.status} for ${url}`);
+  } else {
+    bots = (await res.json()) as ActiveSubscribedBot[];
+  }
+} catch (err) {
+  tradingCronLogger.error(`[fetchTradingConfigs] Fetch error for ${url}`, err);
+}
 
         if (!Array.isArray(bots)) {
             tradingCronLogger.error(`[fetchTradingConfigs] Expected array of bots, got:`, { bots });
