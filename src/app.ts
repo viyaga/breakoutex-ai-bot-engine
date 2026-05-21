@@ -1,6 +1,7 @@
 import express, { Application } from 'express';
 import path from 'path';
 import errorHandler from './middleware/errorHandler';
+import engineAuth from './middleware/engineAuth';
 
 import tradingRoutes from './routes/trading.routes';
 
