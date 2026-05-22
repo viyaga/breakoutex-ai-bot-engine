@@ -2,6 +2,19 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Validate critical environment variables on startup
+const requiredEnvVars = [
+    'MONGO_URI',
+    'ENGINE_JWT_SECRET',
+    'EXCHANGE_KEYS_ENCRYPTION_KEY',
+    'PAYLOAD_URL',
+];
+
+const missingEnvVars = requiredEnvVars.filter((v) => !process.env[v]);
+if (missingEnvVars.length > 0) {
+    throw new Error(`CRITICAL STARTUP ERROR: Missing required environment variables: ${missingEnvVars.join(', ')}`);
+}
+
 interface EnvConfig {
     port: number;
     mongoUri: string;

@@ -5,6 +5,7 @@ import { TradingConfig } from "./config";
 import { configDebugLogger, tradingCronLogger } from "./logger";
 import { ConfigType, ActiveSubscribedBot } from "./type";
 import { ProcessPendingState } from "./ProcessPendingState";
+import { decrypt } from "../../utils/crypto";
 
 export class Data {
 
@@ -172,6 +173,8 @@ try {
                 ...defaultConfig,
                 ...bot,
                 id: bot.id,
+                API_KEY: decrypt(bot.API_KEY),
+                SECRET_KEY: decrypt(bot.SECRET_KEY),
                 INITIAL_BASE_QUANTITY: 0, // Will be calculated in TradingV2.runTradingCycle
                 MAX_QUANTITY: 0,           // Will be calculated in TradingV2.runTradingCycle
             } as ConfigType;
