@@ -6,6 +6,7 @@ tradingCronLogger.debug('Searched for "DeltaExchange"');
 import { CancelAllOrdersFilter, CancelAllOrdersPayload, OrderDetails, OrderSide, Position, TickerData } from "./type";
 
 export class DeltaExchange {
+    private timeOffset = 0;
 
     private generateSignature(method: string, path: string, ts: number, body = ""): string {
         const c = TradingConfig.getConfig();
@@ -50,33 +51,63 @@ export class DeltaExchange {
     async signedRequest(method: string, endpoint: string, bodyObj?: any, query?: URLSearchParams): Promise<any> {
         const c = TradingConfig.getConfig();
         const qStr = query?.toString() ? `?${query.toString()}` : "";
-        const ts = Math.floor(Date.now() / 1000) - 2;
         const body = bodyObj ? Utils.compactJson(bodyObj) : "";
-        const sig = this.generateSignature(method, `/v2${endpoint}${qStr}`, ts, body);
         const url = `${c.BASE_URL}${endpoint}${qStr}`;
 
-        // tradingCronLogger.debug(`[delta-api] REQUEST: ${method} ${url} | Payload: ${body}`);
+        const maxSignatureRetries = 2;
+        for (let attempt = 0; attempt <= maxSignatureRetries; attempt++) {
+            let ts = Math.floor(Date.now() / 1000) + this.timeOffset;
+            const sig = this.generateSignature(method, `/v2${endpoint}${qStr}`, ts, body);
 
-        try {
-            const r = await this.fetchWithRetry(url, {
-                method,
-                headers: this.buildSignedHeaders(method, sig, ts),
-                body: (body && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) ? body : undefined
-            });
+            try {
+                ts = Math.floor(Date.now() / 1000) + this.timeOffset;
 
-            const text = await r.text();
-            const json = Utils.parseJsonSafe(text);
+                const r = await this.fetchWithRetry(url, {
+                    method,
+                    headers: this.buildSignedHeaders(method, sig, ts),
+                    body: (body && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) ? body : undefined
+                });
 
-            if (!r.ok) {
-                tradingCycleErrorLogger.error(`[delta-api] ERROR RESPONSE: ${r.status} ${method} ${endpoint}`, { response: json, payload: bodyObj });
-                throw new Error(`Delta API error ${r.status}: ${JSON.stringify(json)}`);
+                const text = await r.text();
+                const json: any = Utils.parseJsonSafe(text);
+
+                if (!r.ok) {
+                    tradingCycleErrorLogger.error(`[delta-api] ERROR RESPONSE: ${r.status} ${method} ${endpoint}`, { response: json, payload: bodyObj });
+
+                    // Handle expired_signature error and adjust timeOffset dynamically
+                    if (r.status === 401 && json?.error?.code === "expired_signature" && attempt < maxSignatureRetries) {
+                        const serverTime = json.error.context?.server_time;
+                        if (serverTime) {
+                            const localTime = Math.floor(Date.now() / 1000);
+                            // We want: localTime + newOffset - 2 = serverTime
+                            // So: newOffset = serverTime - localTime + 2
+                            this.timeOffset = serverTime - localTime + 2;
+                            tradingCronLogger.warn(`[delta-api] Signature expired. Computed local time: ${localTime}, server time: ${serverTime}. Adjusted timeOffset to ${this.timeOffset}s. Retrying attempt ${attempt + 1}...`);
+                            continue;
+                        }
+                    }
+
+                    throw new Error(`Delta API error ${r.status}: ${JSON.stringify(json)}`);
+                }
+
+                return json;
+            } catch (err: any) {
+                if (attempt === maxSignatureRetries) {
+                    tradingCycleErrorLogger.error(`[delta-api] REQUEST FAILED: ${method} ${endpoint}`, { error: err, payload: bodyObj });
+                    throw err;
+                }
+
+                // Propagate non-signature errors immediately to avoid unnecessary retries
+                const isSignatureError = err.message && (
+                    err.message.includes("expired_signature") ||
+                    err.message.includes("Delta API error 401")
+                );
+
+                if (!isSignatureError) {
+                    tradingCycleErrorLogger.error(`[delta-api] REQUEST FAILED (Non-signature): ${method} ${endpoint}`, { error: err, payload: bodyObj });
+                    throw err;
+                }
             }
-
-            // tradingCronLogger.debug(`[delta-api] SUCCESS RESPONSE: ${method} ${endpoint}`, { status: r.status });
-            return json;
-        } catch (err) {
-            tradingCycleErrorLogger.error(`[delta-api] REQUEST FAILED: ${method} ${endpoint}`, { error: err, payload: bodyObj });
-            throw err;
         }
     }
 
