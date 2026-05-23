@@ -66,7 +66,7 @@ export class Data {
         const sessionPnl = isLoss ? (lastClosed?.pnl || 0) : 0;
         const sessionFees = isLoss ? (lastClosed?.cumulativeFees || 0) : 0;
 
-        let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY;
+        let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
         if (isLoss && currentPrice > 0) {
             const netDebt = sessionPnl - sessionFees;
             quantity = ProcessPendingState.calculateMartingaleLots(netDebt, currentPrice, multiplier);
@@ -75,6 +75,11 @@ export class Data {
             // Fallback to previous quantity if currentPrice is not available (safety)
             quantity = lastClosed?.quantity || quantity;
             tradingCronLogger.warn(`[Data] Falling back to previous quantity for ${sym} due to missing price: ${quantity}`);
+        }
+
+        // Final safety check to ensure quantity is never 0/NaN/falsy
+        if (!quantity || isNaN(quantity) || quantity <= 0) {
+            quantity = Math.max(1, TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1);
         }
 
         // 3. Create a new open state

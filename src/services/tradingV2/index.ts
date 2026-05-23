@@ -262,7 +262,14 @@ export class TradingV2 {
 
                 if (state.status === 'closed') {
                     cronLogger.info(`State was closed. Fetching/Creating new active state...`);
-                    state = await Data.getOrCreateState(c.id, c.USER_ID, c.SYMBOL, c.PRODUCT_ID);
+                    state = await Data.getOrCreateState(
+                        c.id,
+                        c.USER_ID,
+                        c.SYMBOL,
+                        c.PRODUCT_ID,
+                        scoreMultiplier,
+                        currentPrice
+                    );
                 }
             }
 
