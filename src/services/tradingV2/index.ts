@@ -206,7 +206,7 @@ export class TradingV2 {
                 cronLogger.info(`[MTF] Price Levels target: TP=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), SL=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), Net RR=${mtf.rr.toFixed(2)}`);
 
                 // Log to separate file for MTF allowed trades
-                mtfAllowedFileLogger.info(`[ALLOWED] ${symbol} | Score: ${mtf.finalScore} (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability}) | TP: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | RR: ${mtf.rr.toFixed(2)} | Dir: ${mtf.direction}`);
+                mtfAllowedFileLogger.info(`[ALLOWED] ${symbol} | Entry: ${currentPrice} | Score: ${mtf.finalScore} (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability}) | TP: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction}`);
             }
 
             const scoreMultiplier = mtf.finalScore > 85 ? 1.5 : mtf.finalScore > 80 ? 1 : mtf.finalScore > 75 ? 0.5 : 0;

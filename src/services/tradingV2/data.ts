@@ -116,16 +116,29 @@ export class Data {
         const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/delta?limit=${limit}&offset=${offset}&serverIp=${env.serverIp}`;
 
         let bots: ActiveSubscribedBot[] = [];
-try {
-  const res = await fetch(url);
-  if (!res.ok) {
-    tradingCronLogger.warn(`[fetchTradingConfigs] HTTP ${res.status} for ${url}`);
-  } else {
-    bots = (await res.json()) as ActiveSubscribedBot[];
-  }
-} catch (err) {
-  tradingCronLogger.error(`[fetchTradingConfigs] Fetch error for ${url}`, err);
-}
+        const maxConfigRetries = 3;
+
+        for (let attempt = 1; attempt <= maxConfigRetries; attempt++) {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) {
+                    tradingCronLogger.warn(`[fetchTradingConfigs] HTTP ${res.status} for ${url} (Attempt ${attempt}/${maxConfigRetries})`);
+                    if (attempt === maxConfigRetries) {
+                        break;
+                    }
+                } else {
+                    bots = (await res.json()) as ActiveSubscribedBot[];
+                    break;
+                }
+            } catch (err: any) {
+                tradingCronLogger.error(`[fetchTradingConfigs] Fetch error for ${url} (Attempt ${attempt}/${maxConfigRetries}):`, err);
+                if (attempt === maxConfigRetries) {
+                    break;
+                }
+            }
+            // Wait with backoff before retrying
+            await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+        }
 
         if (!Array.isArray(bots)) {
             tradingCronLogger.error(`[fetchTradingConfigs] Expected array of bots, got:`, { bots });
@@ -145,21 +158,30 @@ try {
         const productDataMap = new Map<string, any>();
         await Promise.all(
             uniqueMappedSymbols.map(async (mappedSymbol) => {
-                try {
-                    const productUrl = `${defaultConfig.BASE_URL}/products/${mappedSymbol}`;
-                    tradingCronLogger.debug(`[fetchTradingConfigs] Fetching product data for unique symbol: ${mappedSymbol} from: ${productUrl}`);
-                    const productRes = await fetch(productUrl);
-                    if (productRes.ok) {
-                        const productData: any = await productRes.json();
-                        if (productData.success && productData.result) {
-                            productDataMap.set(mappedSymbol, productData.result);
-                            tradingCronLogger.info(`[fetchTradingConfigs] ✓ Successfully fetched product data for ${mappedSymbol}`);
+                const productUrl = `${defaultConfig.BASE_URL}/products/${mappedSymbol}`;
+                const maxProductRetries = 3;
+
+                for (let attempt = 1; attempt <= maxProductRetries; attempt++) {
+                    try {
+                        tradingCronLogger.debug(`[fetchTradingConfigs] Fetching product data for unique symbol: ${mappedSymbol} from: ${productUrl} (Attempt ${attempt}/${maxProductRetries})`);
+                        const productRes = await fetch(productUrl);
+                        if (productRes.ok) {
+                            const productData: any = await productRes.json();
+                            if (productData.success && productData.result) {
+                                productDataMap.set(mappedSymbol, productData.result);
+                                tradingCronLogger.info(`[fetchTradingConfigs] ✓ Successfully fetched product data for ${mappedSymbol}`);
+                                break;
+                            }
+                        } else {
+                            tradingCronLogger.warn(`[fetchTradingConfigs] Failed to fetch product data for ${mappedSymbol}: ${productRes.status} (Attempt ${attempt}/${maxProductRetries})`);
                         }
-                    } else {
-                        tradingCronLogger.warn(`[fetchTradingConfigs] Failed to fetch product data for ${mappedSymbol}: ${productRes.status}`);
+                    } catch (err) {
+                        tradingCronLogger.error(`[fetchTradingConfigs] Error fetching product data for ${mappedSymbol} (Attempt ${attempt}/${maxProductRetries}):`, err);
                     }
-                } catch (err) {
-                    tradingCronLogger.error(`[fetchTradingConfigs] Error fetching product data for ${mappedSymbol}:`, err);
+                    
+                    if (attempt < maxProductRetries) {
+                        await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+                    }
                 }
             })
         );
