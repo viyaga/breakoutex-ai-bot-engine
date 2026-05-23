@@ -4,9 +4,9 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // GCM recommended IV size
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.EXCHANGE_KEYS_ENCRYPTION_KEY || process.env.ENGINE_JWT_SECRET || process.env.PAYLOAD_SECRET;
+  const secret = process.env.EXCHANGE_KEYS_ENCRYPTION_KEY;
   if (!secret) {
-    throw new Error('Encryption key not found in environment variables (EXCHANGE_KEYS_ENCRYPTION_KEY, ENGINE_JWT_SECRET, PAYLOAD_SECRET)');
+    throw new Error('EXCHANGE_KEYS_ENCRYPTION_KEY is not defined in environment variables. Please add it to your .env file.');
   }
   // Hash the secret using sha256 to ensure we get a consistent 32-byte key
   return crypto.createHash('sha256').update(secret).digest();
