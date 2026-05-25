@@ -14,7 +14,7 @@ export class ProcessPendingState {
         const c = TradingConfig.getConfig();
         const targetAmount = Math.abs(netDebt) * multiplier; // Dynamic multiplier based on MTF score
         const marginRequiredPerLot = (currentPrice * c.LOT_SIZE) / c.LEVERAGE;
-        return c.INITIAL_BASE_QUANTITY + Math.ceil(
+        return (c.INITIAL_BASE_QUANTITY ?? 0) + Math.ceil(
             targetAmount / marginRequiredPerLot
         );
     }
@@ -47,7 +47,7 @@ export class ProcessPendingState {
 
     /* =========================================================================
        CANDLE ANALYSIS UTILITIES
-    ========================================================================= */
+     ========================================================================= */
 
     static resetState(s: ITradeState): ITradeState {
         const c = TradingConfig.getConfig();
@@ -61,7 +61,7 @@ export class ProcessPendingState {
             entryPrice: null,
             slPrice: null,
             tpPrice: null,
-            quantity: c.INITIAL_BASE_QUANTITY,
+            quantity: c.INITIAL_BASE_QUANTITY ?? 0,
             pnl: 0,
             cumulativeFees: 0,
             allTimePnl: s.allTimePnl || 0,

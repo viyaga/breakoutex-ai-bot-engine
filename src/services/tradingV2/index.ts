@@ -181,6 +181,14 @@ export class TradingV2 {
                 cronLogger.info(`[Config] Converted MAX_TRADE_SIZE ($${c.MAX_TRADE_SIZE}) to MAX_QUANTITY (${c.MAX_QUANTITY} lots). Previous: ${oldMaxQty}`);
             }
 
+            cronLogger.info(`[Config] Quantities after conversion: INITIAL_BASE_QUANTITY = ${c.INITIAL_BASE_QUANTITY ?? 'undefined'}, MAX_QUANTITY = ${c.MAX_QUANTITY ?? 'undefined'}`);
+
+            if (!c.INITIAL_BASE_QUANTITY || c.INITIAL_BASE_QUANTITY <= 0 || !c.MAX_QUANTITY || c.MAX_QUANTITY <= 0) {
+                skipLogger.warn(`[SKIP] Trade not allowed: INITIAL_BASE_QUANTITY (${c.INITIAL_BASE_QUANTITY}) or MAX_QUANTITY (${c.MAX_QUANTITY}) is invalid or missing.`);
+                return;
+            }
+
+
             // ───────────────── MULTI TIMEFRAME ALIGNMENT ─────────────────
             const configConfirmation: ConfigType = { ...c, TIMEFRAME: c.CONFIRMATION_TIMEFRAME };
             const configStructure: ConfigType = { ...c, TIMEFRAME: c.STRUCTURE_TIMEFRAME };
