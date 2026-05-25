@@ -21,11 +21,11 @@ export class ProcessPendingState {
 
     static calculateMetrics(entryPrice: number, tpPrice: number, slPrice: number, leverage: number) {
         if (!entryPrice || !tpPrice || !slPrice) return {};
-        
+
         const c = TradingConfig.getConfig();
         const tpDist = Math.abs(tpPrice - entryPrice);
         const rawSlDist = Math.abs(entryPrice - slPrice);
-        
+
         // 🔥 Include SL buffer in risk for accurate metrics
         const slDist = rawSlDist + (slPrice * c.SL_LIMIT_BUFFER_PERCENT / 100);
 
@@ -346,57 +346,58 @@ export class ProcessPendingState {
         logContext?: any
     ): Promise<ITradeState> {
 
-        const logger = getContextualLogger(tradesLogger, logContext);
-        try {
+        return s;
+        //     const logger = getContextualLogger(tradesLogger, logContext);
+        //     try {
 
-            if (!s.stopLossOrderId || !s.slPrice) throw new Error("SL order or price missing in state");
+        //         if (!s.stopLossOrderId || !s.slPrice) throw new Error("SL order or price missing in state");
 
-            const sl = mtf.sl;
-            const tp = mtf.tp;
+        //         const sl = mtf.sl;
+        //         const tp = mtf.tp;
 
-            const updateRes = await deltaExchange.updateStopLossOrder(
-                s.stopLossOrderId,
-                s.slPrice,
-                TradingConfig.getConfig().PRODUCT_ID,
-                sym,
-                e.side,
-                sl,
-                logContext
-            );
+        //         const updateRes = await deltaExchange.updateStopLossOrder(
+        //             s.stopLossOrderId,
+        //             s.slPrice,
+        //             TradingConfig.getConfig().PRODUCT_ID,
+        //             sym,
+        //             e.side,
+        //             sl,
+        //             logContext
+        //         );
 
-            let tpUpdatedValue = s.tpPrice || 0;
-            if (s.takeProfitOrderId && s.tpPrice && tp) {
-                const updateTpRes = await deltaExchange.updateTakeProfitOrder(
-                    s.takeProfitOrderId,
-                    s.tpPrice,
-                    TradingConfig.getConfig().PRODUCT_ID,
-                    sym,
-                    tp,
-                    logContext
-                );
-                if (updateTpRes.success) {
-                    tpUpdatedValue = updateTpRes.tpPrice;
-                }
-            }
+        //         let tpUpdatedValue = s.tpPrice || 0;
+        //         if (s.takeProfitOrderId && s.tpPrice && tp) {
+        //             const updateTpRes = await deltaExchange.updateTakeProfitOrder(
+        //                 s.takeProfitOrderId,
+        //                 s.tpPrice,
+        //                 TradingConfig.getConfig().PRODUCT_ID,
+        //                 sym,
+        //                 tp,
+        //                 logContext
+        //             );
+        //             if (updateTpRes.success) {
+        //                 tpUpdatedValue = updateTpRes.tpPrice;
+        //             }
+        //         }
 
-            if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === s.tpPrice) return s;
-            if (!updateRes.success && updateRes.isSlReversed) return s;
+        //         if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === s.tpPrice) return s;
+        //         if (!updateRes.success && updateRes.isSlReversed) return s;
 
-            if (!updateRes.success && !updateRes.isSlSame && !updateRes.isSlReversed)
-                return this.placeCancelledBracketOrders(s, e, sl, logContext);
+        //         if (!updateRes.success && !updateRes.isSlSame && !updateRes.isSlReversed)
+        //             return this.placeCancelledBracketOrders(s, e, sl, logContext);
 
-            const updated = await this.updateStatePrices(s, updateRes.slPrice, tpUpdatedValue || s.tpPrice || 0);
+        //         const updated = await this.updateStatePrices(s, updateRes.slPrice, tpUpdatedValue || s.tpPrice || 0);
 
-            if (!updated) throw new Error("Trade state not found");
+        //         if (!updated) throw new Error("Trade state not found");
 
-            logger.info(`[PriceTrailing] Successfully updated SL/TP for ${sym}: SL=${updateRes.slPrice}, TP=${tpUpdatedValue}`);
+        //         logger.info(`[PriceTrailing] Successfully updated SL/TP for ${sym}: SL=${updateRes.slPrice}, TP=${tpUpdatedValue}`);
 
-            return updated as ITradeState;
+        //         return updated as ITradeState;
 
-        } catch (err) {
-            logger.error("Error in manageOpenPosition", { error: err });
-            throw err;
-        }
+        //     } catch (err) {
+        //         logger.error("Error in manageOpenPosition", { error: err });
+        //         throw err;
+        //     }
     }
 
 
