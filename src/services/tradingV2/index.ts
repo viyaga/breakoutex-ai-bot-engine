@@ -215,7 +215,8 @@ export class TradingV2 {
                 mtfAllowedFileLogger.info(`[ALLOWED] ${symbol} | Entry: ${currentPrice} | Score: ${mtf.finalScore} (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability}) | TP: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction}`);
             }
 
-            const scoreMultiplier = mtf.finalScore > 85 ? 1.5 : mtf.finalScore > 80 ? 1 : mtf.finalScore > 75 ? 0.5 : 0;
+            // 🔥 RISK REDUCTION: Cap max multiplier at 1.2 instead of 1.5 to reduce capital margin requirement by 20% while still recovering debt in profit
+            const scoreMultiplier = mtf.finalScore > 85 ? 1.2 : mtf.finalScore > 80 ? 1.0 : mtf.finalScore > 75 ? 0.5 : 0;
 
             // ───────────────── STATE ─────────────────
             let state = await Data.getOrCreateState(
@@ -287,6 +288,14 @@ export class TradingV2 {
             }
 
             const now = new Date();
+
+            // ───────────────── WEEKEND FILTER ─────────────────
+            const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+            if (!c.IS_TESTING && (dayOfWeek === 6 || dayOfWeek === 0)) {
+                skipLogger.info(`[SKIP] ${symbol}: Weekend trading disabled for safety (Day of week: ${dayOfWeek})`);
+                return;
+            }
+
             const istMinutes = Number(
                 now.toLocaleString("en-IN", {
                     timeZone: "Asia/Kolkata",
@@ -343,16 +352,12 @@ export class TradingV2 {
             }
 
             // ───────────────── QUANTITY ─────────────────
-            const qty = c.IS_TESTING ? 1 : state.quantity;
+            let qty = c.IS_TESTING ? 1 : state.quantity;
             if (!qty) throw new Error("Quantity not found");
 
             if (qty && qty > c.MAX_QUANTITY) {
-                skipLogger.info(`[Quantity] SKIP: Quantity exceeds MAX_QUANTITY`, {
-                    timeframe: c.TIMEFRAME,
-                    qty,
-                    maxQuantity: c.MAX_QUANTITY
-                });
-                return;
+                cronLogger.info(`[Quantity] Trade quantity ${qty} exceeds MAX_QUANTITY (${c.MAX_QUANTITY}). Capping size at MAX_QUANTITY for safety and proceeding.`);
+                qty = c.MAX_QUANTITY;
             }
 
             cronLogger.info(
