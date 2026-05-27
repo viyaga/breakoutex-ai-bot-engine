@@ -1,6 +1,6 @@
 import { Data } from "./data";
 import { deltaExchange } from "./delta-exchange";
-import { tradingCycleErrorLogger, skipTradingLogger, tradingCronLogger, marketDetectorLogger, marketSkipLogger, getContextualLogger, tradesLogger, mtfAllowedLogger } from "./logger";
+import { tradingCycleErrorLogger, skipTradingLogger, tradingCronLogger, marketDetectorLogger, getContextualLogger, tradesLogger, mtfAllowedLogger } from "./logger";
 import { ConfigType, TargetCandle, Candle, OrderSide } from "./type";
 import { Utils } from "./utils";
 import { ProcessPendingState } from "./ProcessPendingState";
@@ -113,7 +113,6 @@ export class TradingV2 {
         const skipLogger = getContextualLogger(skipTradingLogger, { cycleId, symbol, tradingBotId });
         const errorLogger = getContextualLogger(tradingCycleErrorLogger, { cycleId, symbol, tradingBotId });
         const detectorLogger = getContextualLogger(marketDetectorLogger, { cycleId, symbol, tradingBotId });
-        const detectorSkipLogger = getContextualLogger(marketSkipLogger, { cycleId, symbol, tradingBotId });
         const tradeLogger = getContextualLogger(tradesLogger, { cycleId, symbol, tradingBotId });
         const mtfAllowedFileLogger = getContextualLogger(mtfAllowedLogger, { cycleId, symbol, tradingBotId });
 
@@ -309,7 +308,6 @@ export class TradingV2 {
             }
 
             if (!mtf.isAllowed) {
-                detectorSkipLogger.info(`[MTF-REJECTED] ${symbol}: MTF evaluation result is not allowed (Score: ${mtf.finalScore}, Decision: ${mtf.decision})`);
                 skipLogger.info(`[SKIP] ${symbol}: MTF evaluation result is not allowed (Score: ${mtf.finalScore}, Decision: ${mtf.decision})`);
                 return;
             }
