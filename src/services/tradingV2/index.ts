@@ -352,12 +352,26 @@ export class TradingV2 {
             }
 
             // ───────────────── QUANTITY ─────────────────
-            let qty = c.IS_TESTING ? 1 : state.quantity;
+            const qty = c.IS_TESTING ? 1 : state.quantity;
             if (!qty) throw new Error("Quantity not found");
 
             if (qty && qty > c.MAX_QUANTITY) {
-                cronLogger.info(`[Quantity] Trade quantity ${qty} exceeds MAX_QUANTITY (${c.MAX_QUANTITY}). Capping size at MAX_QUANTITY for safety and proceeding.`);
-                qty = c.MAX_QUANTITY;
+                const maxLossLimitStr = c.MAX_TRADE_SIZE ? `$${c.MAX_TRADE_SIZE}` : `${c.MAX_QUANTITY} lots`;
+                const maxLossError = `Max Loss Crossed: Required trade size exceeds the configured Max Trade Size safety limit (${maxLossLimitStr}). Stopping bot to protect capital.`;
+                cronLogger.error(`[Quantity] ${maxLossError} (Calculated Quantity: ${qty} lots, Max Quantity: ${c.MAX_QUANTITY} lots)`);
+
+                // Stop the bot and set error message locally (will be synced to backend)
+                await BotError.findOneAndUpdate(
+                    { botId: tradingBotId },
+                    {
+                        message: maxLossError,
+                        status: 'stopped',
+                        isActive: false,
+                        updatedAt: new Date()
+                    },
+                    { upsert: true }
+                );
+                return;
             }
 
             cronLogger.info(
