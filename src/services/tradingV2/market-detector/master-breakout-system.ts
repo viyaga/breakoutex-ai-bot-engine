@@ -120,20 +120,36 @@ export function evaluateBreakoutTrade(
 
     const bodyPercent = Utils.getBodyPercent(target);
 
-    if (bodyPercent > 75) score += 10;
-    else if (bodyPercent > 65) score += 6;
-    else if (bodyPercent < 45) score -= 6;
+    if (bodyPercent > 75) score += 15;
+    else if (bodyPercent > 65) score += 10;
+    else if (bodyPercent > 55) score += 5;
+    else if (bodyPercent < 45) score -= 10;
+    else if (bodyPercent < 35) score -= 15;
+
+    // 🔥 ATR-Relative Candle Body Size Check
+    const bodyHeight = Math.abs(target.close - target.open);
+    if (atr > 0) {
+        const bodyToAtrRatio = bodyHeight / atr;
+        if (bodyToAtrRatio > 2.2) score -= 20; // ❗ Climax/exhaustion candle penalty
+        else if (bodyToAtrRatio > 1.2) score += 10;
+        else if (bodyToAtrRatio < 0.6) score -= 15;
+    }
+
+    // 🔥 Color Alignment Check vs Breakout Direction
+    const candleColor = Utils.getCandleColor(target);
+    if (direction === "BUY" && candleColor === "red") score -= 20;
+    if (direction === "SELL" && candleColor === "green") score -= 20;
 
     /* ================= FAKE BREAKOUT FILTER ================= */
 
     const range = target.high - target.low;
 
     if (range > 0) {
-        const upperWick = target.high - target.close;
-        const lowerWick = target.close - target.low;
+        const upperWick = target.high - Math.max(target.open, target.close);
+        const lowerWick = Math.min(target.open, target.close) - target.low;
 
-        if (direction === "BUY" && upperWick / range > 0.4) score -= 8;
-        if (direction === "SELL" && lowerWick / range > 0.4) score -= 8;
+        if (direction === "BUY" && upperWick / range > 0.25) score -= 15;
+        if (direction === "SELL" && lowerWick / range > 0.25) score -= 15;
     }
 
     /* ================= VOLATILITY ================= */
@@ -148,10 +164,10 @@ export function evaluateBreakoutTrade(
 
     const compressed = isRangeCompressed(candles, 5, cfg.LOOKBACK, 2);
 
-    if (compressed) score += 5;
+    if (compressed) score += 10;
 
     if (compressed && atrPercent > atrAvg * 1.15) {
-        score += 8; // 🔥 expansion phase
+        score += 15; // 🔥 expansion phase
     }
 
     /* ================= VOLUME ================= */
@@ -159,12 +175,17 @@ export function evaluateBreakoutTrade(
     const volumeWindow = Math.min(20, candles.length);
     const avgVol = candles.slice(-volumeWindow).reduce((a, b) => a + b.volume, 0) / volumeWindow;
 
-    const ratio = target.volume / avgVol;
+    const ratio = avgVol > 0 ? target.volume / avgVol : 0;
 
     if (ratio > 2.2) score += 12;
     else if (ratio > 1.8) score += 8;
     else if (ratio > 1.5) score += 5;
-    else score -= 15; // 🔥 heavy penalty for low volume ratio
+    else score -= 20; // 🔥 heavy penalty for low volume ratio
+
+    // 🔥 Volume-Body Synergy Bonus
+    if (ratio > 2.0 && bodyPercent > 70) {
+        score += 8;
+    }
 
     // ✅ pre-breakout contraction
     const preVol =
@@ -180,8 +201,8 @@ export function evaluateBreakoutTrade(
     score += spikePoints;
 
     // 🔥 CRITICAL: breakout confirmation via volume
-    if (direction !== "NONE" && ratio < 1.4) {
-        score -= 12; // ❗ extra penalty for breakout without clear volume spike
+    if (direction !== "NONE" && ratio < 1.5) {
+        score -= 20; // ❗ extra penalty for breakout without clear volume spike
     }
 
     /* ================= ADX ================= */

@@ -141,15 +141,21 @@ export class MarketDetector {
         const bodyPercent = Utils.getBodyPercent(target);
         details.candle = { bodyPercent, score: 0 };
 
-        if (bodyPercent > 70) {
-            prob += 8;
-            details.candle.score = 8;
-        } else if (bodyPercent > 60) {
+        if (bodyPercent > 75) {
+            prob += 15;
+            details.candle.score = 15;
+        } else if (bodyPercent > 65) {
+            prob += 10;
+            details.candle.score = 10;
+        } else if (bodyPercent > 55) {
             prob += 5;
             details.candle.score = 5;
-        } else if (bodyPercent < 40) {
-            prob -= 6;
-            details.candle.score = -6;
+        } else if (bodyPercent < 45) {
+            prob -= 10;
+            details.candle.score = -10;
+        } else if (bodyPercent < 35) {
+            prob -= 15;
+            details.candle.score = -15;
         }
 
         /* ================= VOLUME ================= */

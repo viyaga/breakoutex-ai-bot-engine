@@ -3,6 +3,7 @@ import { Candle, ConfigType, TargetCandle } from "../type";
 import { MarketDetector } from "./market-detector";
 import { evaluateBreakoutTrade } from "./master-breakout-system";
 import { calculateATR } from "./indicators"; // 🔥 NEW
+import { Utils } from "../utils";
 
 export type TradeDecision = "STRONG_TRADE" | "GOOD_TRADE" | "WEAK_TRADE" | "SKIP";
 
@@ -232,6 +233,40 @@ export class MultiTimeframeAlignment {
             isAllowed = false;
         }
 
+        // 🔥 TREND ALIGNMENT FILTER
+        const isAligned = confirmationProbability >= 50 && structureProbability >= 50;
+        if (!entryConfig.IS_TESTING && !isAligned) {
+            isAllowed = false;
+        }
+
+        // 🔥 TREND DIRECTION ALIGNMENT FILTER (EMA 20/50 on higher timeframes)
+        const confEma20 = Utils.calculateEMA(confirmationCandles, 20);
+        const confEma50 = Utils.calculateEMA(confirmationCandles, 50);
+        const structEma20 = Utils.calculateEMA(structureCandles, 20);
+        const structEma50 = Utils.calculateEMA(structureCandles, 50);
+
+        let isTrendDirectionAligned = true;
+        let trendAlignReason = "";
+        if (direction === "BUY") {
+            const isConfBullish = confEma20 > confEma50;
+            const isStructBullish = structEma20 > structEma50;
+            isTrendDirectionAligned = isConfBullish && isStructBullish;
+            if (!isTrendDirectionAligned) {
+                trendAlignReason = `BUY direction but not aligned: Confirmation (1h) Bullish=${isConfBullish} (EMA20/50: ${confEma20.toFixed(4)}/${confEma50.toFixed(4)}), Structure (4h) Bullish=${isStructBullish} (EMA20/50: ${structEma20.toFixed(4)}/${structEma50.toFixed(4)})`;
+            }
+        } else if (direction === "SELL") {
+            const isConfBearish = confEma20 < confEma50;
+            const isStructBearish = structEma20 < structEma50;
+            isTrendDirectionAligned = isConfBearish && isStructBearish;
+            if (!isTrendDirectionAligned) {
+                trendAlignReason = `SELL direction but not aligned: Confirmation (1h) Bearish=${isConfBearish} (EMA20/50: ${confEma20.toFixed(4)}/${confEma50.toFixed(4)}), Structure (4h) Bearish=${isStructBearish} (EMA20/50: ${structEma20.toFixed(4)}/${structEma50.toFixed(4)})`;
+            }
+        }
+
+        if (!entryConfig.IS_TESTING && !isTrendDirectionAligned) {
+            isAllowed = false;
+        }
+
         /* ================= LOG ================= */
 
         /* ================= LOG ================= */
@@ -252,8 +287,12 @@ export class MultiTimeframeAlignment {
                 mode: structureResult.mode,
                 details: structureResult.details,
             });
-        } else if (rr < entryConfig.MIN_RR) {
+        } else if (!entryConfig.IS_TESTING && rr < entryConfig.MIN_RR) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Reward/Risk ratio too low: ${rr.toFixed(2)} < ${entryConfig.MIN_RR.toFixed(2)}`);
+        } else if (!entryConfig.IS_TESTING && !isAligned) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Trend not aligned: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
+        } else if (!entryConfig.IS_TESTING && !isTrendDirectionAligned) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | ${trendAlignReason}`);
         }
 
         return {

@@ -187,7 +187,6 @@ export class TradingV2 {
                 return;
             }
 
-
             // ───────────────── MULTI TIMEFRAME ALIGNMENT ─────────────────
             const configConfirmation: ConfigType = { ...c, TIMEFRAME: c.CONFIRMATION_TIMEFRAME };
             const configStructure: ConfigType = { ...c, TIMEFRAME: c.STRUCTURE_TIMEFRAME };
