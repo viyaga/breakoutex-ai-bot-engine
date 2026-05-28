@@ -29,6 +29,7 @@ export interface ConfigType {
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     LOOKBACK?: number;
+    CONFIRMATION_LOOKBACK?: number;
     MIN_RR?: number;
     ESTIMATED_FEE_PERCENT: number;
     IS_WEEKEND_SAFETY_ENABLED: boolean;
@@ -42,6 +43,7 @@ export interface InternalChopConfig {
 
     ADX_WEAK_THRESHOLD: number;
     LOOKBACK: number;
+    CONFIRMATION_LOOKBACK?: number;
 
     SMALL_BODY_PERCENT_THRESHOLD: number;
     SMALL_BODY_MIN_COUNT: number;

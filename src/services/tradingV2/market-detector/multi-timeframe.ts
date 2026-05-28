@@ -55,15 +55,25 @@ export class MultiTimeframeAlignment {
             logContext
         );
 
-        const confirmationProbability = confirmationResult.probability;
+        const rawConfirmationProbability = confirmationResult.probability;
         const structureProbability = structureResult.probability;
 
         const breakout = evaluateBreakoutTrade(entryCandles, entryTarget, entryConfig);
         let direction = breakout.direction;
         const entryScore = breakout.score;
 
-        marketDetectorLogger.info(`[MTF] Sub-scores for ${entryConfig.SYMBOL}: Entry=${entryScore}, Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
+        // Evaluate breakout trade on confirmation timeframe
+        const confirmationBreakout = evaluateBreakoutTrade(confirmationCandles, confirmationTarget, confirmationConfig);
+
+        // Blend confirmation breakout score with general confirmation probability
+        const confirmationProbability = Math.round(
+            (confirmationBreakout.score * 0.60) +
+            (rawConfirmationProbability * 0.40)
+        );
+
+        marketDetectorLogger.info(`[MTF] Sub-scores for ${entryConfig.SYMBOL}: Entry=${entryScore}, Confirmation=${confirmationProbability} (BO:${confirmationBreakout.score}, Prob:${rawConfirmationProbability}), Structure=${structureProbability}`);
         marketDetectorLogger.debug(`[MTF] Breakout details for ${entryConfig.SYMBOL}: Direction=${breakout.direction}, Score=${breakout.score}, Reason=${breakout.reason}`);
+        marketDetectorLogger.debug(`[MTF] Confirmation Breakout details: Direction=${confirmationBreakout.direction}, Score=${confirmationBreakout.score}, Reason=${confirmationBreakout.reason}`);
 
         const symbol = entryConfig.SYMBOL;
 
@@ -73,7 +83,17 @@ export class MultiTimeframeAlignment {
             direction = "BUY";
         }
 
-        if (direction === "NONE") {
+        // Direct conflict check: If confirmation timeframe has a breakout in opposite direction
+        const hasConfBreakoutMismatch =
+            !entryConfig.IS_TESTING &&
+            direction !== "NONE" &&
+            confirmationBreakout.direction !== "NONE" &&
+            confirmationBreakout.direction !== direction;
+
+        if (direction === "NONE" || hasConfBreakoutMismatch) {
+            if (hasConfBreakoutMismatch) {
+                marketDetectorLogger.info(`[MTF-SKIP] ${symbol}: Direction mismatch between Entry (${direction}) and Confirmation (${confirmationBreakout.direction}) breakouts.`);
+            }
             return {
                 entryScore,
                 confirmationProbability,
@@ -93,12 +113,12 @@ export class MultiTimeframeAlignment {
         /* ================= FINAL SCORE ================= */
 
         const finalScore = Math.round(
-            (entryScore * 0.50) +
-            (confirmationProbability * 0.25) +
-            (structureProbability * 0.25)
+            (entryScore * 0.40) +
+            (confirmationProbability * 0.40) +
+            (structureProbability * 0.20)
         );
 
-        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.5) + (${confirmationProbability} * 0.25) + (${structureProbability} * 0.25) = Final: ${finalScore}`);
+        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.4) + (${confirmationProbability} * 0.4) + (${structureProbability} * 0.2) = Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
 

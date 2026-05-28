@@ -29,6 +29,7 @@ export class TradingConfig {
         MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: 3.5,
         DRY_RUN: false,
         IS_TESTING: process.env.IS_TESTING === "true",
+        CONFIRMATION_LOOKBACK: 36,
         ESTIMATED_FEE_PERCENT: 0.1, // Round-trip fee (0.05% entry + 0.05% exit)
         IS_WEEKEND_SAFETY_ENABLED: true,
     }

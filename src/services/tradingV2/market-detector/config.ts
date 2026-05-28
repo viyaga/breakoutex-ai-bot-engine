@@ -9,12 +9,16 @@ export function getInternalConfig(config: ConfigType): InternalChopConfig {
     else if (timeframe.includes("1h")) lookback = 36;
     else if (timeframe.includes("4h")) lookback = 48;
 
+    const resolvedLookback = config.LOOKBACK ?? lookback;
+    const resolvedConfLookback = config.CONFIRMATION_LOOKBACK ?? 36;
+
     const base: Record<string, InternalChopConfig> = {
         conservative: {
             ATR_PERIOD: 14,
             ADX_PERIOD: 14,
             ADX_WEAK_THRESHOLD: 22,
-            LOOKBACK: lookback,
+            LOOKBACK: resolvedLookback,
+            CONFIRMATION_LOOKBACK: resolvedConfLookback,
             SMALL_BODY_PERCENT_THRESHOLD: 50,
             SMALL_BODY_MIN_COUNT: 7,
             MIN_REQUIRED_CANDLES: 70,
@@ -25,7 +29,8 @@ export function getInternalConfig(config: ConfigType): InternalChopConfig {
             ATR_PERIOD: 14,
             ADX_PERIOD: 14,
             ADX_WEAK_THRESHOLD: 20,
-            LOOKBACK: lookback,
+            LOOKBACK: resolvedLookback,
+            CONFIRMATION_LOOKBACK: resolvedConfLookback,
             SMALL_BODY_PERCENT_THRESHOLD: 48,
             SMALL_BODY_MIN_COUNT: 6,
             MIN_REQUIRED_CANDLES: 60,
@@ -36,7 +41,8 @@ export function getInternalConfig(config: ConfigType): InternalChopConfig {
             ATR_PERIOD: 10,
             ADX_PERIOD: 10,
             ADX_WEAK_THRESHOLD: 18,
-            LOOKBACK: lookback,
+            LOOKBACK: resolvedLookback,
+            CONFIRMATION_LOOKBACK: resolvedConfLookback,
             SMALL_BODY_PERCENT_THRESHOLD: 45,
             SMALL_BODY_MIN_COUNT: 5,
             MIN_REQUIRED_CANDLES: 40,
