@@ -92,13 +92,11 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL SCORE ================= */
 
-        const finalScoreRaw = Math.round(
+        const finalScore = Math.round(
             (entryScore * 0.50) +
             (confirmationProbability * 0.25) +
             (structureProbability * 0.25)
         );
-
-        const finalScore = finalScoreRaw;
 
         marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.5) + (${confirmationProbability} * 0.25) + (${structureProbability} * 0.25) = Final: ${finalScore}`);
 
@@ -139,8 +137,8 @@ export class MultiTimeframeAlignment {
         if (entryPrice > 0) {
             /* ================= DYNAMIC SL ================= */
             const isStructAligned = (direction === "BUY" && structureTarget.color === "green") ||
-                                    (direction === "SELL" && structureTarget.color === "red");
-            
+                (direction === "SELL" && structureTarget.color === "red");
+
             const structSlPrice = direction === "BUY" ? structureTarget.low : structureTarget.high;
             const confSlPrice = direction === "BUY" ? confirmationTarget.low : confirmationTarget.high;
 
