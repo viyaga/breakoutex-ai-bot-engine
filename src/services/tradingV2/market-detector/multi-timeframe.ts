@@ -92,13 +92,51 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL SCORE ================= */
 
-        const finalScore = Math.round(
+        const finalScoreRaw = Math.round(
             (entryScore * 0.50) +
             (confirmationProbability * 0.25) +
             (structureProbability * 0.25)
         );
 
-        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.5) + (${confirmationProbability} * 0.25) + (${structureProbability} * 0.25) = ${finalScore}`);
+        // Calculate EMA alignment score adjustments
+        let trendScoreAdjustment = 0;
+        let trendAlignReason = "";
+
+        const confEma20 = Utils.calculateEMA(confirmationCandles, 20);
+        const confEma50 = Utils.calculateEMA(confirmationCandles, 50);
+        const isConfBullish = confEma20 > confEma50;
+        const isConfBearish = confEma20 < confEma50;
+        
+        let isConfAligned = false;
+        if (direction === "BUY" && isConfBullish) isConfAligned = true;
+        if (direction === "SELL" && isConfBearish) isConfAligned = true;
+
+        if (isConfAligned) {
+            trendScoreAdjustment += 5;
+        } else {
+            trendScoreAdjustment -= 15;
+            trendAlignReason += `1h Trend NOT aligned (EMA20/50: ${confEma20.toFixed(4)}/${confEma50.toFixed(4)}). `;
+        }
+
+        const structEma20 = Utils.calculateEMA(structureCandles, 20);
+        const structEma50 = Utils.calculateEMA(structureCandles, 50);
+        const isStructBullish = structEma20 > structEma50;
+        const isStructBearish = structEma20 < structEma50;
+
+        let isStructAligned = false;
+        if (direction === "BUY" && isStructBullish) isStructAligned = true;
+        if (direction === "SELL" && isStructBearish) isStructAligned = true;
+
+        if (isStructAligned) {
+            trendScoreAdjustment += 5;
+        } else {
+            trendScoreAdjustment -= 15;
+            trendAlignReason += `4h Trend NOT aligned (EMA20/50: ${structEma20.toFixed(4)}/${structEma50.toFixed(4)}). `;
+        }
+
+        const finalScore = Math.max(0, Math.min(100, finalScoreRaw + trendScoreAdjustment));
+
+        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.5) + (${confirmationProbability} * 0.25) + (${structureProbability} * 0.25) = Raw: ${finalScoreRaw} | Adj: ${trendScoreAdjustment} -> Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
 
@@ -214,37 +252,8 @@ export class MultiTimeframeAlignment {
             isAllowed = false;
         }
 
-        // 🔥 TREND DIRECTION ALIGNMENT FILTER (EMA 20/50 on higher timeframes)
-        const confEma20 = Utils.calculateEMA(confirmationCandles, 20);
-        const confEma50 = Utils.calculateEMA(confirmationCandles, 50);
-        const structEma20 = Utils.calculateEMA(structureCandles, 20);
-        const structEma50 = Utils.calculateEMA(structureCandles, 50);
-
-        let isTrendDirectionAligned = true;
-        let trendAlignReason = "";
-        if (direction === "BUY") {
-            const isConfBullish = confEma20 > confEma50;
-            const isStructBullish = structEma20 > structEma50;
-            isTrendDirectionAligned = isConfBullish && isStructBullish;
-            if (!isTrendDirectionAligned) {
-                trendAlignReason = `BUY direction but not aligned: Confirmation (1h) Bullish=${isConfBullish} (EMA20/50: ${confEma20.toFixed(4)}/${confEma50.toFixed(4)}), Structure (4h) Bullish=${isStructBullish} (EMA20/50: ${structEma20.toFixed(4)}/${structEma50.toFixed(4)})`;
-            }
-        } else if (direction === "SELL") {
-            const isConfBearish = confEma20 < confEma50;
-            const isStructBearish = structEma20 < structEma50;
-            isTrendDirectionAligned = isConfBearish && isStructBearish;
-            if (!isTrendDirectionAligned) {
-                trendAlignReason = `SELL direction but not aligned: Confirmation (1h) Bearish=${isConfBearish} (EMA20/50: ${confEma20.toFixed(4)}/${confEma50.toFixed(4)}), Structure (4h) Bearish=${isStructBearish} (EMA20/50: ${structEma20.toFixed(4)}/${structEma50.toFixed(4)})`;
-            }
-        }
-
-        if (!entryConfig.IS_TESTING && !isTrendDirectionAligned) {
-            isAllowed = false;
-        }
-
         /* ================= LOG ================= */
 
-        /* ================= LOG ================= */
         const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
         marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | RR: ${rr.toFixed(2)} | TP: ${tp} | SL: ${sl}`);
 
@@ -264,8 +273,8 @@ export class MultiTimeframeAlignment {
             });
         } else if (!entryConfig.IS_TESTING && !isAligned) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Trend not aligned: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
-        } else if (!entryConfig.IS_TESTING && !isTrendDirectionAligned) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | ${trendAlignReason}`);
+        } else if (!entryConfig.IS_TESTING && trendScoreAdjustment < 0 && !isAllowed) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Trend direction penalty applied: ${trendAlignReason}`);
         } else if (isExceededMovementLimit) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
         }
