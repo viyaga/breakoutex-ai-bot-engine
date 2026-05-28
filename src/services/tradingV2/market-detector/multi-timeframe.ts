@@ -130,68 +130,41 @@ export class MultiTimeframeAlignment {
 
         // 🔥 Use current price if provided, otherwise fallback to candle close
         const entryPrice = currentPriceParam && currentPriceParam > 0 ? currentPriceParam : entryTarget.close;
-        const atr = calculateATR(entryCandles, 14);
 
-        if (atr > 0 && entryPrice > 0) {
-
-            /* ================= BASE ================= */
-
-            let slATR = 1.2;
-            let tpATR = 2.0;
-
-            /* ================= SCORE BASED ================= */
-
-            if (finalScore >= 75) {
-                slATR = 1.5;
-                tpATR = 3.0;
-            } else if (finalScore >= 65) {
-                slATR = 1.3;
-                tpATR = 2.4;
-            } else {
-                slATR = 1.0;
-                tpATR = 1.6;
-            }
-            marketDetectorLogger.debug(`[MTF] Base TP/SL ATR multipliers: TP=${tpATR}, SL=${slATR} (Score: ${finalScore})`);
-
-            /* ================= CONFIRMATION BOOST ================= */
-
-            if (confirmationProbability > 70) {
-                tpATR += 0.4;
-                marketDetectorLogger.debug(`[MTF] Confirmation probability boost applied: +0.4 TP ATR`);
-            }
-
-            if (structureProbability < 55) {
-                tpATR -= 0.3;
-                marketDetectorLogger.debug(`[MTF] Weak structure penalty applied: -0.3 TP ATR`);
-            }
-
-            /* ================= CALC ================= */
+        if (entryPrice > 0) {
+            /* ================= DYNAMIC SL ================= */
+            const isStructAligned = (direction === "BUY" && structureTarget.color === "green") ||
+                                    (direction === "SELL" && structureTarget.color === "red");
+            
+            const sourceCandle = isStructAligned ? structureTarget : confirmationTarget;
 
             if (direction === "BUY") {
-                sl = parseFloat((entryPrice - atr * slATR).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                tp = parseFloat((entryPrice + atr * tpATR).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-
-                // 🔥 MAX SL PRICE MOVEMENT (2%)
-                const maxSlDist = entryPrice * 0.02;
-                const minSlPrice = parseFloat((entryPrice - maxSlDist).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                sl = Math.max(sl, minSlPrice);
-
+                sl = sourceCandle.low;
             } else {
-                sl = parseFloat((entryPrice + atr * slATR).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                tp = parseFloat((entryPrice - atr * tpATR).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                sl = sourceCandle.high;
+            }
+            sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
-                // 🔥 MAX SL PRICE MOVEMENT (2%)
-                const maxSlDist = entryPrice * 0.02;
-                const maxSlPrice = parseFloat((entryPrice + maxSlDist).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                sl = Math.min(sl, maxSlPrice);
+            /* ================= FIXED 30% TP ================= */
+            if (direction === "BUY") {
+                tp = entryPrice * 1.30;
+            } else {
+                tp = entryPrice * 0.70;
             }
 
+            if (tp <= 0) {
+                // Minimum positive value based on decimals (e.g., 0.0001 for 4)
+                tp = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+            } else {
+                tp = parseFloat(tp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+            }
+
+            /* ================= METRICS & RR ================= */
             const rawRisk = Math.abs(entryPrice - sl);
-            // 🔥 Include SL buffer in risk calculation for accurate RR
             const riskPriceDist = rawRisk + (sl * entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
             const rewardPriceDist = Math.abs(tp - entryPrice);
 
-            // 🔥 Include Estimated Fees in RR (Conservative)
+            // Include Estimated Fees in RR
             const feePercent = entryConfig.ESTIMATED_FEE_PERCENT / 100;
             const entryFee = entryPrice * (feePercent / 2);
             const exitFeeTp = tp * (feePercent / 2);
@@ -205,23 +178,7 @@ export class MultiTimeframeAlignment {
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
 
-            marketDetectorLogger.info(`[MTF] Dynamic TP/SL for ${symbol}: ATR=${atr.toFixed(4)}, Entry=${entryPrice}, TP=${tp} (${tpPerc.toFixed(2)}%), SL=${sl} (${slPerc.toFixed(2)}%), Net RR=${rr.toFixed(2)} (Fees incl.)`);
-
-        } else if (entryConfig.IS_TESTING && entryPrice > 0) {
-            // 🔥 TESTING FALLBACK: If ATR is 0, use 0.5% fixed move
-            const fallbackAtr = entryPrice * 0.005;
-            marketDetectorLogger.info(`[TESTING] ${symbol}: ATR is 0, using fallback TP/SL (0.5% price movement)`);
-
-            if (direction === "BUY") {
-                sl = parseFloat((entryPrice - fallbackAtr * 1.5).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                tp = parseFloat((entryPrice + fallbackAtr * 3.0).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-            } else {
-                sl = parseFloat((entryPrice + fallbackAtr * 1.5).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                tp = parseFloat((entryPrice - fallbackAtr * 3.0).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-            }
-            rr = 2.0;
-            tpPerc = 0.5 * leverage;
-            slPerc = 0.25 * leverage;
+            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry=${entryPrice}, TP=${tp} (${tpPerc.toFixed(2)}%), SL=${sl} (${slPerc.toFixed(2)}%), Net RR=${rr.toFixed(2)} (Fees incl.)`);
         }
 
         /* ================= FINAL PERMISSION ================= */
