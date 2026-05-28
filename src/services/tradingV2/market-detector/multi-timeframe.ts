@@ -126,6 +126,9 @@ export class MultiTimeframeAlignment {
         let rr = 0;
         let tpPerc = 0;
         let slPerc = 0;
+        let structSlPerc = 0;
+        let confSlPerc = 0;
+        let isExceededMovementLimit = false;
         const leverage = entryConfig.LEVERAGE;
 
         // 🔥 Use current price if provided, otherwise fallback to candle close
@@ -136,7 +139,22 @@ export class MultiTimeframeAlignment {
             const isStructAligned = (direction === "BUY" && structureTarget.color === "green") ||
                                     (direction === "SELL" && structureTarget.color === "red");
             
-            const sourceCandle = isStructAligned ? structureTarget : confirmationTarget;
+            const structSlPrice = direction === "BUY" ? structureTarget.low : structureTarget.high;
+            const confSlPrice = direction === "BUY" ? confirmationTarget.low : confirmationTarget.high;
+
+            structSlPerc = (Math.abs(entryPrice - structSlPrice) / entryPrice) * 100;
+            confSlPerc = (Math.abs(entryPrice - confSlPrice) / entryPrice) * 100;
+
+            const maxLimit = entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT;
+            let sourceCandle = confirmationTarget;
+
+            if (isStructAligned && structSlPerc <= maxLimit) {
+                sourceCandle = structureTarget;
+            } else {
+                if (confSlPerc > maxLimit) {
+                    isExceededMovementLimit = true;
+                }
+            }
 
             if (direction === "BUY") {
                 sl = sourceCandle.low * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
@@ -187,7 +205,7 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL PERMISSION ================= */
 
-        let isAllowed = isAllowedScore && tp > 0 && sl > 0;
+        let isAllowed = isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit;
 
 
         // 🔥 TREND ALIGNMENT FILTER
@@ -248,6 +266,8 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Trend not aligned: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
         } else if (!entryConfig.IS_TESTING && !isTrendDirectionAligned) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | ${trendAlignReason}`);
+        } else if (isExceededMovementLimit) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
         }
 
         return {

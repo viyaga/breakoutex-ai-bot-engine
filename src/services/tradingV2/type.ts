@@ -25,6 +25,7 @@ export interface ConfigType {
     TRADING_MODE: "conservative" | "balanced" | "aggressive" | "meme"
     SL_TRIGGER_BUFFER_PERCENT: number,
     SL_LIMIT_BUFFER_PERCENT: number;
+    MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: number;
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     LOOKBACK?: number;
