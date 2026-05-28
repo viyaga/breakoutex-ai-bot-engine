@@ -96,13 +96,11 @@ export class Utils {
     ) {
         const c = TradingConfig.getConfig();
 
-        const slTriggerPrice = positionSide === "buy"
-            ? sl * (1 - c.SL_TRIGGER_BUFFER_PERCENT / 100) // long → sell SL
-            : sl * (1 + c.SL_TRIGGER_BUFFER_PERCENT / 100); // short → buy SL
+        const triggerFactor = 1 - (positionSide === "buy" ? c.SL_TRIGGER_BUFFER_PERCENT : -c.SL_TRIGGER_BUFFER_PERCENT) / 100;
+        const limitFactor = 1 - (positionSide === "buy" ? c.SL_LIMIT_BUFFER_PERCENT : -c.SL_LIMIT_BUFFER_PERCENT) / 100;
 
-        const slLimitPrice = positionSide === "buy"
-            ? sl * (1 - c.SL_LIMIT_BUFFER_PERCENT / 100) // long → sell SL
-            : sl * (1 + c.SL_LIMIT_BUFFER_PERCENT / 100); // short → buy SL
+        const slTriggerPrice = sl; 
+        const slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
 
         const payload = {
             product_id: Number(c.PRODUCT_ID),

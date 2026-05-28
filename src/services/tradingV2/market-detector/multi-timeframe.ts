@@ -139,9 +139,9 @@ export class MultiTimeframeAlignment {
             const sourceCandle = isStructAligned ? structureTarget : confirmationTarget;
 
             if (direction === "BUY") {
-                sl = sourceCandle.low;
+                sl = sourceCandle.low * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
             } else {
-                sl = sourceCandle.high;
+                sl = sourceCandle.high * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
             }
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
@@ -160,8 +160,12 @@ export class MultiTimeframeAlignment {
             }
 
             /* ================= METRICS & RR ================= */
+            const slLimit = direction === "BUY"
+                ? sourceCandle.low * (1 - entryConfig.SL_LIMIT_BUFFER_PERCENT / 100)
+                : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
+
             const rawRisk = Math.abs(entryPrice - sl);
-            const riskPriceDist = rawRisk + (sl * entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
+            const riskPriceDist = Math.abs(entryPrice - slLimit);
             const rewardPriceDist = Math.abs(tp - entryPrice);
 
             // Include Estimated Fees in RR

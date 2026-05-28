@@ -147,18 +147,16 @@ export class DeltaExchange {
 
         const c = TradingConfig.getConfig();
 
-        const slTriggerPrice = orderSide === "buy"
-            ? sl * (1 - c.SL_TRIGGER_BUFFER_PERCENT / 100)
-            : sl * (1 + c.SL_TRIGGER_BUFFER_PERCENT / 100);
+        const triggerFactor = 1 - (orderSide === "buy" ? c.SL_TRIGGER_BUFFER_PERCENT : -c.SL_TRIGGER_BUFFER_PERCENT) / 100;
+        const limitFactor = 1 - (orderSide === "buy" ? c.SL_LIMIT_BUFFER_PERCENT : -c.SL_LIMIT_BUFFER_PERCENT) / 100;
 
-        const slLimitPrice = orderSide === "buy"
-            ? sl * (1 - c.SL_LIMIT_BUFFER_PERCENT / 100)
-            : sl * (1 + c.SL_LIMIT_BUFFER_PERCENT / 100);
+        const slTriggerPrice = sl;
+        const slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
 
         const stopPrice = String(Utils.clampPrice(slTriggerPrice));
         const limitPrice = String(Utils.clampPrice(slLimitPrice));
 
-        const oldSlLimit = Utils.clampPrice(slPrice * (orderSide === "buy" ? (1 - c.SL_LIMIT_BUFFER_PERCENT / 100) : (1 + c.SL_LIMIT_BUFFER_PERCENT / 100)));
+        const oldSlLimit = Utils.clampPrice(triggerFactor !== 0 ? slPrice * (limitFactor / triggerFactor) : slPrice);
         const newSlLimit = Number(limitPrice);
 
         logger.debug("SL price calculation", { newSlLimit, oldSlLimit, sl, slPrice });
