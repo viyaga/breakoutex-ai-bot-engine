@@ -35,6 +35,33 @@ export class Data {
                 st.userId = userId;
                 await st.save();
             }
+
+            // 🔥 BUG FIX: If we have an active open state but haven't placed an entry order yet,
+            // recalculate the quantity based on the current price, current config, and multiplier.
+            if (!st.entryOrderId) {
+                const lastClosed = await TradeState.findOne({ tradingBotId, status: 'closed' })
+                    .sort({ updatedAt: -1 });
+                const isLoss = lastClosed?.tradeOutcome === 'loss';
+                
+                let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
+                if (isLoss && currentPrice > 0) {
+                    const netDebt = (lastClosed?.pnl || 0) - (lastClosed?.cumulativeFees || 0);
+                    quantity = ProcessPendingState.calculateMartingaleLots(netDebt, currentPrice, multiplier);
+                    tradingCronLogger.info(`[Data] Recalculated recovery quantity for pending entry on ${sym}: ${quantity} (Level: ${st.currentLevel}, NetDebt: ${netDebt.toFixed(2)}, Multiplier: ${multiplier})`);
+                } else {
+                    quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
+                }
+                
+                if (!quantity || isNaN(quantity) || quantity <= 0) {
+                    quantity = Math.max(1, TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1);
+                }
+
+                if (st.quantity !== quantity) {
+                    tradingCronLogger.info(`[Data] Updating pending entry quantity from ${st.quantity} to ${quantity} for ${sym}`);
+                    st.quantity = quantity;
+                    await st.save();
+                }
+            }
             
             tradingCronLogger.debug(`[Data] Loaded active state for ${sym}`, { id: st._id });
             return st;
