@@ -291,7 +291,7 @@ export class TradingV2 {
 
             // ───────────────── WEEKEND FILTER ─────────────────
             const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
-            if (!c.IS_TESTING && (dayOfWeek === 6 || dayOfWeek === 0)) {
+            if (c.IS_WEEKEND_SAFETY_ENABLED && !c.IS_TESTING && (dayOfWeek === 6 || dayOfWeek === 0)) {
                 skipLogger.info(`[SKIP] ${symbol}: Weekend trading disabled for safety (Day of week: ${dayOfWeek})`);
                 return;
             }

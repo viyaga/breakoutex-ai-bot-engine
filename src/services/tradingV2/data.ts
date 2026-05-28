@@ -202,6 +202,7 @@ export class Data {
                 id: bot.id,
                 API_KEY: decrypt(bot.API_KEY),
                 SECRET_KEY: decrypt(bot.SECRET_KEY),
+                IS_WEEKEND_SAFETY_ENABLED: bot.IS_WEEKEND_SAFETY_ENABLED !== false,
             } as ConfigType;
 
             const p = productDataMap.get(mappedSymbol);

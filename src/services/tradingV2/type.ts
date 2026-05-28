@@ -31,6 +31,7 @@ export interface ConfigType {
     LOOKBACK?: number;
     MIN_RR?: number;
     ESTIMATED_FEE_PERCENT: number;
+    IS_WEEKEND_SAFETY_ENABLED: boolean;
 }
 
 export type MarketEvaluationMode = "structure" | "confirmation" | "entry";
@@ -286,4 +287,5 @@ export interface ActiveSubscribedBot {
     DAILY_LOSS_LIMIT: number
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number
+    IS_WEEKEND_SAFETY_ENABLED?: boolean
 }
