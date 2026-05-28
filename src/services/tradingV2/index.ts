@@ -171,13 +171,13 @@ export class TradingV2 {
             // ───────────────── CONVERT USD TO LOTS ─────────────────
             if (c.MIN_TRADE_SIZE && currentPrice > 0) {
                 const oldQty = c.INITIAL_BASE_QUANTITY;
-                c.INITIAL_BASE_QUANTITY = Math.max(1, Math.floor(c.MIN_TRADE_SIZE / (currentPrice * c.LOT_SIZE)));
-                cronLogger.info(`[Config] Converted MIN_TRADE_SIZE ($${c.MIN_TRADE_SIZE}) to INITIAL_BASE_QUANTITY (${c.INITIAL_BASE_QUANTITY} lots). Previous: ${oldQty}`);
+                c.INITIAL_BASE_QUANTITY = Math.max(1, Math.floor((c.MIN_TRADE_SIZE * c.LEVERAGE) / (currentPrice * c.LOT_SIZE)));
+                cronLogger.info(`[Config] Converted MIN_TRADE_SIZE margin ($${c.MIN_TRADE_SIZE}) to INITIAL_BASE_QUANTITY (${c.INITIAL_BASE_QUANTITY} lots) using ${c.LEVERAGE}x leverage. Previous: ${oldQty}`);
             }
             if (c.MAX_TRADE_SIZE && currentPrice > 0) {
                 const oldMaxQty = c.MAX_QUANTITY;
-                c.MAX_QUANTITY = Math.max(1, Math.floor(c.MAX_TRADE_SIZE / (currentPrice * c.LOT_SIZE)));
-                cronLogger.info(`[Config] Converted MAX_TRADE_SIZE ($${c.MAX_TRADE_SIZE}) to MAX_QUANTITY (${c.MAX_QUANTITY} lots). Previous: ${oldMaxQty}`);
+                c.MAX_QUANTITY = Math.max(1, Math.floor((c.MAX_TRADE_SIZE * c.LEVERAGE) / (currentPrice * c.LOT_SIZE)));
+                cronLogger.info(`[Config] Converted MAX_TRADE_SIZE margin ($${c.MAX_TRADE_SIZE}) to MAX_QUANTITY (${c.MAX_QUANTITY} lots) using ${c.LEVERAGE}x leverage. Previous: ${oldMaxQty}`);
             }
 
             cronLogger.info(`[Config] Quantities after conversion: INITIAL_BASE_QUANTITY = ${c.INITIAL_BASE_QUANTITY ?? 'undefined'}, MAX_QUANTITY = ${c.MAX_QUANTITY ?? 'undefined'}`);
