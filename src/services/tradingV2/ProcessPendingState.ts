@@ -253,14 +253,17 @@ export class ProcessPendingState {
         state: ITradeState,
         e: OrderDetails,
         sl: number,
-        logContext?: any
+        logContext?: any,
+        forceReplace: boolean = false
     ): Promise<ITradeState> {
-        const slOrder = await deltaExchange.getOrderDetails(
-            state.stopLossOrderId!
-        );
+        if (!forceReplace) {
+            const slOrder = await deltaExchange.getOrderDetails(
+                state.stopLossOrderId!
+            );
 
-        if (slOrder?.status !== "CANCELLED") {
-            throw new Error("SL update failed");
+            if (slOrder?.status !== "CANCELLED") {
+                throw new Error("SL update failed");
+            }
         }
 
         const cancelRes = await deltaExchange.cancelStopOrders({
@@ -349,6 +352,18 @@ export class ProcessPendingState {
         try {
 
             if (!s.stopLossOrderId || !s.slPrice) throw new Error("SL order or price missing in state");
+
+            // 🔍 Query TP and SL order details to check if either was manually cancelled
+            const slOrder = await deltaExchange.getOrderDetails(s.stopLossOrderId);
+            const tpOrder = s.takeProfitOrderId ? await deltaExchange.getOrderDetails(s.takeProfitOrderId) : null;
+
+            const isSlCancelled = !slOrder || slOrder.status === "CANCELLED";
+            const isTpCancelled = s.takeProfitOrderId && (!tpOrder || tpOrder.status === "CANCELLED");
+
+            if (isSlCancelled || isTpCancelled) {
+                logger.warn(`[Recovery] Detected manually cancelled TP/SL order for ${sym} (SL Cancelled: ${isSlCancelled}, TP Cancelled: ${isTpCancelled}). Re-placing bracket orders...`);
+                return this.placeCancelledBracketOrders(s, e, s.slPrice, logContext, true);
+            }
 
             const sl = mtf.sl;
             const tp = s.tpPrice || mtf.tp;
