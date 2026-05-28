@@ -28,7 +28,6 @@ export class TradingConfig {
         SL_LIMIT_BUFFER_PERCENT: 0,
         DRY_RUN: false,
         IS_TESTING: process.env.IS_TESTING === "true",
-        MIN_RR: 1.6,
         ESTIMATED_FEE_PERCENT: 0.1, // Round-trip fee (0.05% entry + 0.05% exit)
     }
 

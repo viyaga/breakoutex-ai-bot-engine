@@ -28,7 +28,7 @@ export interface ConfigType {
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     LOOKBACK?: number;
-    MIN_RR: number;
+    MIN_RR?: number;
     ESTIMATED_FEE_PERCENT: number;
 }
 
@@ -281,7 +281,7 @@ export interface ActiveSubscribedBot {
     MIN_TRADE_SIZE: number
     MAX_TRADE_SIZE: number
     TRADING_MODE: "conservative" | "balanced" | "aggressive" | "meme"
-    MIN_RR: number
+    MIN_RR?: number
     DAILY_LOSS_LIMIT: number
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number

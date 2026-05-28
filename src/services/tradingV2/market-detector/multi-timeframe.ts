@@ -228,10 +228,6 @@ export class MultiTimeframeAlignment {
 
         let isAllowed = isAllowedScore && tp > 0 && sl > 0;
 
-        // 🔥 RR FILTER
-        if (!entryConfig.IS_TESTING && rr < entryConfig.MIN_RR) {
-            isAllowed = false;
-        }
 
         // 🔥 TREND ALIGNMENT FILTER
         const isAligned = confirmationProbability >= 50 && structureProbability >= 50;
@@ -287,8 +283,6 @@ export class MultiTimeframeAlignment {
                 mode: structureResult.mode,
                 details: structureResult.details,
             });
-        } else if (!entryConfig.IS_TESTING && rr < entryConfig.MIN_RR) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Reward/Risk ratio too low: ${rr.toFixed(2)} < ${entryConfig.MIN_RR.toFixed(2)}`);
         } else if (!entryConfig.IS_TESTING && !isAligned) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Trend not aligned: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
         } else if (!entryConfig.IS_TESTING && !isTrendDirectionAligned) {
