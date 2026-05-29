@@ -121,7 +121,7 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL SCORE ================= */
 
-        // 🔥 Prioritize 1h Breakout: Shifted weight from entryScore (0.40 -> 0.30) to confirmationProbability (0.40 -> 0.50)
+        // 🔥 Balanced approach: 30% Entry, 40% Confirmation, 30% Structure
         let finalScore = Math.round(
             (entryScore * 0.30) +
             (confirmationProbability * 0.40) +
@@ -134,12 +134,12 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF] ${symbol}: Alignment Bonus! Both 15m and 1h breakouts aligned in ${direction} direction. Added +10 to final score (Final: ${finalScore})`);
         }
 
-        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.3) + (${confirmationProbability} * 0.5) + (${structureProbability} * 0.2) = Final: ${finalScore}`);
+        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.3) + (${confirmationProbability} * 0.4) + (${structureProbability} * 0.3) = Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
 
         if (finalScore >= 75) decision = "STRONG_TRADE";
-        else if (finalScore >= 65) decision = "GOOD_TRADE";
+        else if (finalScore >= 70) decision = "GOOD_TRADE";
         else if (finalScore >= 50) decision = "WEAK_TRADE";
 
         // Preliminary permission based on score
