@@ -143,31 +143,72 @@ export class DeltaExchange {
         logContext?: any
     ): Promise<{ success: boolean, slPrice: number, isSlSame?: boolean, isSlReversed?: boolean }> {
 
+        // NOTE: This method now validates the stop‑loss direction against the current market price
+        // and ensures a non‑zero safety buffer so the order cannot be executed immediately.
         const logger = getContextualLogger(tradingCronLogger, logContext);
 
         const c = TradingConfig.getConfig();
 
-        const triggerFactor = 1 - (orderSide === "buy" ? c.SL_TRIGGER_BUFFER_PERCENT : -c.SL_TRIGGER_BUFFER_PERCENT) / 100;
-        const limitFactor = 1 - (orderSide === "buy" ? c.SL_LIMIT_BUFFER_PERCENT : -c.SL_LIMIT_BUFFER_PERCENT) / 100;
+        // ---------------------------------------------------------------------
+        // 1️⃣ Get the latest market price for the symbol.
+        // ---------------------------------------------------------------------
+        const ticker = await this.getTickerData(productSymbol);
+        const marketPrice = Number(
+            ticker?.mark_price ?? ticker?.spot_price ?? ticker?.best_bid ?? ticker?.best_ask ?? 0
+        );
+        if (!marketPrice) {
+            logger.warn(
+                "Unable to fetch market price for stop‑loss validation – proceeding without check",
+                { productSymbol }
+            );
+        }
 
-        const slTriggerPrice = sl;
+        // ---------------------------------------------------------------------
+        // 2️⃣ Compute the buffered trigger/limit prices.
+        // ---------------------------------------------------------------------
+        const triggerBufferPct = Math.max(c.SL_TRIGGER_BUFFER_PERCENT, 0.01);
+        const limitBufferPct = Math.max(c.SL_LIMIT_BUFFER_PERCENT, 0.01);
+        const triggerFactor =
+            1 - (orderSide === "buy" ? triggerBufferPct : -triggerBufferPct) / 100;
+        const limitFactor =
+            1 - (orderSide === "buy" ? limitBufferPct : -limitBufferPct) / 100;
+
+        let slTriggerPrice = sl; 
         const slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
+
+        if (marketPrice) {
+            if (
+                (orderSide === "buy" && Number(slTriggerPrice) >= marketPrice) ||
+                (orderSide === "sell" && Number(slTriggerPrice) <= marketPrice)
+            ) {
+                const adjustment = (marketPrice * 0.001).toFixed(5); 
+                const adjustedStop =
+                    orderSide === "buy"
+                        ? marketPrice - Number(adjustment)
+                        : marketPrice + Number(adjustment);
+                logger.warn(
+                    "Stop‑loss price would trigger immediately – adjusting",
+                    {
+                        originalStop: slTriggerPrice,
+                        adjustedStop,
+                        marketPrice,
+                        side: orderSide,
+                    }
+                );
+                slTriggerPrice = adjustedStop;
+            }
+        }
 
         const stopPrice = String(Utils.clampPrice(slTriggerPrice));
         const limitPrice = String(Utils.clampPrice(slLimitPrice));
-
-        const oldSlLimit = Utils.clampPrice(triggerFactor !== 0 ? slPrice * (limitFactor / triggerFactor) : slPrice);
         const newSlLimit = Number(limitPrice);
+        const oldSlLimit = Number(slPrice);
 
-        logger.debug("SL price calculation", { newSlLimit, oldSlLimit, sl, slPrice });
-
-        // SL unchanged
-        if (newSlLimit === oldSlLimit) {
+        if (limitPrice === String(Utils.clampPrice(slPrice))) {
             logger.debug("SL prices unchanged. Skipping update.");
             return { success: false, slPrice: sl, isSlSame: true };
         }
 
-        // Check wrong direction movement
         const isSlReversed =
             (orderSide === "buy" && newSlLimit < oldSlLimit) ||
             (orderSide === "sell" && newSlLimit > oldSlLimit);

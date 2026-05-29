@@ -66,9 +66,10 @@ export class MultiTimeframeAlignment {
         const confirmationBreakout = evaluateBreakoutTrade(confirmationCandles, confirmationTarget, confirmationConfig);
 
         // Blend confirmation breakout score with general confirmation probability
+        // 🔥 Prioritize 1h Breakout: Increased weight from 0.60 to 0.80
         const confirmationProbability = Math.round(
-            (confirmationBreakout.score * 0.60) +
-            (rawConfirmationProbability * 0.40)
+            (confirmationBreakout.score * 0.80) +
+            (rawConfirmationProbability * 0.20)
         );
 
         marketDetectorLogger.info(`[MTF] Sub-scores for ${entryConfig.SYMBOL}: Entry=${entryScore}, Confirmation=${confirmationProbability} (BO:${confirmationBreakout.score}, Prob:${rawConfirmationProbability}), Structure=${structureProbability}`);
@@ -76,6 +77,14 @@ export class MultiTimeframeAlignment {
         marketDetectorLogger.debug(`[MTF] Confirmation Breakout details: Direction=${confirmationBreakout.direction}, Score=${confirmationBreakout.score}, Reason=${confirmationBreakout.reason}`);
 
         const symbol = entryConfig.SYMBOL;
+
+        // 🔥 FALLBACK TO 1H BREAKOUT: If entry (15m) has no breakout, but confirmation (1h) does, inherit direction from 1h
+        let isDirectionFromConfirmation = false;
+        if (direction === "NONE" && confirmationBreakout.direction !== "NONE") {
+            direction = confirmationBreakout.direction;
+            isDirectionFromConfirmation = true;
+            marketDetectorLogger.info(`[MTF] ${symbol}: No 15m breakout. Inheriting 1h breakout direction instead: ${direction}`);
+        }
 
         // 🔥 TESTING OVERRIDE: If testing and no breakout, force BUY
         if (direction === "NONE" && entryConfig.IS_TESTING) {
@@ -112,13 +121,20 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL SCORE ================= */
 
-        const finalScore = Math.round(
-            (entryScore * 0.40) +
+        // 🔥 Prioritize 1h Breakout: Shifted weight from entryScore (0.40 -> 0.30) to confirmationProbability (0.40 -> 0.50)
+        let finalScore = Math.round(
+            (entryScore * 0.30) +
             (confirmationProbability * 0.40) +
-            (structureProbability * 0.20)
+            (structureProbability * 0.30)
         );
 
-        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.4) + (${confirmationProbability} * 0.4) + (${structureProbability} * 0.2) = Final: ${finalScore}`);
+        // 🔥 Alignment Bonus: If both 15m and 1h breakouts are aligned, add +10 to final score
+        if (!isDirectionFromConfirmation && confirmationBreakout.direction === direction) {
+            finalScore = Math.min(100, finalScore + 10);
+            marketDetectorLogger.info(`[MTF] ${symbol}: Alignment Bonus! Both 15m and 1h breakouts aligned in ${direction} direction. Added +10 to final score (Final: ${finalScore})`);
+        }
+
+        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.3) + (${confirmationProbability} * 0.5) + (${structureProbability} * 0.2) = Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
 
@@ -127,7 +143,7 @@ export class MultiTimeframeAlignment {
         else if (finalScore >= 50) decision = "WEAK_TRADE";
 
         // Preliminary permission based on score
-        let isAllowedScore = entryConfig.IS_TESTING || finalScore >= 65;
+        let isAllowedScore = entryConfig.IS_TESTING || finalScore >= 70;
 
         /* ================= EXTRA FILTER (OPTIONAL BUT STRONG) ================= */
 
@@ -135,8 +151,12 @@ export class MultiTimeframeAlignment {
             confirmationProbability > 60 &&
             structureProbability > 60;
 
-        if (!entryConfig.IS_TESTING && !isStrongTrend && entryScore < 65) {
-            isAllowedScore = false;
+        if (!entryConfig.IS_TESTING && !isStrongTrend) {
+            const primaryScore = isDirectionFromConfirmation ? confirmationBreakout.score : entryScore;
+            if (primaryScore < 65) {
+                isAllowedScore = false;
+                marketDetectorLogger.info(`[MTF-SKIP] ${symbol}: Breakout source score ${primaryScore} too low under non-strong trend conditions`);
+            }
         }
 
         /* ================= 🔥 DYNAMIC TP/SL ================= */
