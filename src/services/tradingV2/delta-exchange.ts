@@ -48,11 +48,29 @@ export class DeltaExchange {
         throw new Error("Fetch failed after retries");
     }
 
-    async signedRequest(method: string, endpoint: string, bodyObj?: any, query?: URLSearchParams): Promise<any> {
+    async signedRequest(method: string, endpoint: string, bodyObj?: any, query?: URLSearchParams, isPrivate = true): Promise<any> {
         const c = TradingConfig.getConfig();
         const qStr = query?.toString() ? `?${query.toString()}` : "";
         const body = bodyObj ? Utils.compactJson(bodyObj) : "";
         const url = `${c.BASE_URL}${endpoint}${qStr}`;
+
+        if (!isPrivate) {
+            try {
+                const r = await this.fetchWithRetry(url, {
+                    method,
+                    headers: { Accept: "application/json" }
+                });
+                const text = await r.text();
+                const json: any = Utils.parseJsonSafe(text);
+                if (!r.ok) {
+                    throw new Error(`Delta API error ${r.status}: ${JSON.stringify(json)}`);
+                }
+                return json;
+            } catch (err: any) {
+                tradingCycleErrorLogger.error(`[delta-api] PUBLIC REQUEST FAILED: ${method} ${endpoint}`, { error: err });
+                throw err;
+            }
+        }
 
         const maxSignatureRetries = 2;
         for (let attempt = 0; attempt <= maxSignatureRetries; attempt++) {
@@ -112,11 +130,11 @@ export class DeltaExchange {
     }
 
     async getCandlestickData(s: string, r: string, start: number, end: number) {
-        return this.signedRequest("GET", "/history/candles", undefined, new URLSearchParams({ symbol: s, resolution: r, start: String(start / 1000), end: String(end / 1000) }));
+        return this.signedRequest("GET", "/history/candles", undefined, new URLSearchParams({ symbol: s, resolution: r, start: String(Math.floor(start / 1000)), end: String(Math.floor(end / 1000)) }), false);
     }
 
     async getTickerData(sym: string): Promise<TickerData | null> {
-        const r = (await this.signedRequest("GET", `/tickers/${sym}`))?.result ?? null;
+        const r = (await this.signedRequest("GET", `/tickers/${sym}`, undefined, undefined, false))?.result ?? null;
         if (r?.quotes) {
             if (r.quotes.best_ask && r.best_ask === undefined) r.best_ask = r.quotes.best_ask;
             if (r.quotes.best_bid && r.best_bid === undefined) r.best_bid = r.quotes.best_bid;
