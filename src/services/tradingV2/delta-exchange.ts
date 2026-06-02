@@ -129,7 +129,7 @@ export class DeltaExchange {
         if (!raw?.result) return null;
         const o = raw.result, s = (o.state || o.status)?.toUpperCase();
         if (!s) return null;
-        return { id: String(o.id), status: s, meta_data: o.meta_data, paid_commission: o.paid_commission, product_id: o.product_id, side: o.side, client_order_id: o.client_order_id, product_symbol: o.product_symbol, average_fill_price: o.average_fill_price, limit_price: o.limit_price, size: o.size, bracket_order: o.bracket_order ?? null };
+        return { id: String(o.id), status: s, meta_data: o.meta_data, paid_commission: o.paid_commission, product_id: o.product_id, side: o.side, client_order_id: o.client_order_id, product_symbol: o.product_symbol, average_fill_price: o.average_fill_price, limit_price: o.limit_price, stop_price: o.stop_price ?? null, size: o.size, bracket_order: o.bracket_order ?? null };
     }
 
 

@@ -350,27 +350,50 @@ export class ProcessPendingState {
     ): Promise<ITradeState> {
         const logger = getContextualLogger(tradesLogger, logContext);
         try {
-
-            if (!s.stopLossOrderId || !s.slPrice) throw new Error("SL order or price missing in state");
+            let slPrice = s.slPrice;
+            let tpPrice = s.tpPrice;
 
             // 🔍 Query TP and SL order details to check if either was manually cancelled
-            const slOrder = await deltaExchange.getOrderDetails(s.stopLossOrderId);
+            const slOrder = s.stopLossOrderId ? await deltaExchange.getOrderDetails(s.stopLossOrderId) : null;
             const tpOrder = s.takeProfitOrderId ? await deltaExchange.getOrderDetails(s.takeProfitOrderId) : null;
+
+            // 🔥 Recovery: If slPrice or tpPrice is missing in state, try to recover from active orders
+            if (slOrder && !slPrice) {
+                const stopPriceVal = slOrder.stop_price ? Number(slOrder.stop_price) : (slOrder.limit_price ? Number(slOrder.limit_price) : 0);
+                if (stopPriceVal) {
+                    slPrice = stopPriceVal;
+                    logger.info(`[Recovery] Recovered missing slPrice for ${sym} from order details: ${slPrice}`);
+                    await TradeState.findByIdAndUpdate(s.id || (s as any)._id, { $set: { slPrice } });
+                    s.slPrice = slPrice;
+                }
+            }
+
+            if (tpOrder && !tpPrice) {
+                const limitPriceVal = tpOrder.limit_price ? Number(tpOrder.limit_price) : (tpOrder.stop_price ? Number(tpOrder.stop_price) : 0);
+                if (limitPriceVal) {
+                    tpPrice = limitPriceVal;
+                    logger.info(`[Recovery] Recovered missing tpPrice for ${sym} from order details: ${tpPrice}`);
+                    await TradeState.findByIdAndUpdate(s.id || (s as any)._id, { $set: { tpPrice } });
+                    s.tpPrice = tpPrice;
+                }
+            }
+
+            if (!s.stopLossOrderId || !slPrice) throw new Error("SL order or price missing in state");
 
             const isSlCancelled = !slOrder || slOrder.status === "CANCELLED";
             const isTpCancelled = s.takeProfitOrderId && (!tpOrder || tpOrder.status === "CANCELLED");
 
             if (isSlCancelled || isTpCancelled) {
                 logger.warn(`[Recovery] Detected manually cancelled TP/SL order for ${sym} (SL Cancelled: ${isSlCancelled}, TP Cancelled: ${isTpCancelled}). Re-placing bracket orders...`);
-                return this.placeCancelledBracketOrders(s, e, s.slPrice, logContext, true);
+                return this.placeCancelledBracketOrders(s, e, slPrice, logContext, true);
             }
 
             const sl = mtf.sl;
-            const tp = s.tpPrice || mtf.tp;
+            const tp = tpPrice || mtf.tp;
 
             const updateRes = await deltaExchange.updateStopLossOrder(
                 s.stopLossOrderId,
-                s.slPrice,
+                slPrice,
                 TradingConfig.getConfig().PRODUCT_ID,
                 sym,
                 e.side,
@@ -378,11 +401,11 @@ export class ProcessPendingState {
                 logContext
             );
 
-            let tpUpdatedValue = s.tpPrice || 0;
-            if (s.takeProfitOrderId && s.tpPrice && tp) {
+            let tpUpdatedValue = tpPrice || 0;
+            if (s.takeProfitOrderId && tpPrice && tp) {
                 const updateTpRes = await deltaExchange.updateTakeProfitOrder(
                     s.takeProfitOrderId,
-                    s.tpPrice,
+                    tpPrice,
                     TradingConfig.getConfig().PRODUCT_ID,
                     sym,
                     tp,
@@ -393,13 +416,13 @@ export class ProcessPendingState {
                 }
             }
 
-            if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === s.tpPrice) return s;
+            if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === tpPrice) return s;
             if (!updateRes.success && updateRes.isSlReversed) return s;
 
             if (!updateRes.success && !updateRes.isSlSame && !updateRes.isSlReversed)
                 return this.placeCancelledBracketOrders(s, e, sl, logContext);
 
-            const updated = await this.updateStatePrices(s, updateRes.slPrice, tpUpdatedValue || s.tpPrice || 0);
+            const updated = await this.updateStatePrices(s, updateRes.slPrice, tpUpdatedValue || tpPrice || 0);
 
             if (!updated) throw new Error("Trade state not found");
 
@@ -524,6 +547,8 @@ export class ProcessPendingState {
                 confirmationProbability: mtf.confirmationProbability,
                 structureProbability: mtf.structureProbability,
                 tradingMode: cfg.TRADING_MODE,
+                tpPrice,
+                slPrice,
                 ...metrics
             };
 
