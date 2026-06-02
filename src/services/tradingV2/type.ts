@@ -26,6 +26,7 @@ export interface ConfigType {
     SL_TRIGGER_BUFFER_PERCENT: number,
     SL_LIMIT_BUFFER_PERCENT: number;
     MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: number;
+    TP_PRICE_MOVEMENT_PERCENT: number;
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     LOOKBACK?: number;
@@ -290,4 +291,5 @@ export interface ActiveSubscribedBot {
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number
     IS_WEEKEND_SAFETY_ENABLED?: boolean
+    TP_PRICE_MOVEMENT_PERCENT: number
 }

@@ -203,11 +203,12 @@ export class MultiTimeframeAlignment {
             }
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
-            /* ================= FIXED 30% TP ================= */
+            /* ================= DYNAMIC TP ================= */
+            const tpPercent = entryConfig.TP_PRICE_MOVEMENT_PERCENT;
             if (direction === "BUY") {
-                tp = entryPrice * 1.30;
+                tp = entryPrice * (1 + tpPercent / 100);
             } else {
-                tp = entryPrice * 0.70;
+                tp = entryPrice * (1 - tpPercent / 100);
             }
 
             if (tp <= 0) {
