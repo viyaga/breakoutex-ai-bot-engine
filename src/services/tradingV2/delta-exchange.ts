@@ -312,7 +312,12 @@ export class DeltaExchange {
     }
 
     async cancelStopOrders(f: CancelAllOrdersFilter): Promise<{ success: boolean }> {
-        const p: CancelAllOrdersPayload = { contract_types: "perpetual_futures", cancel_limit_orders: false, cancel_stop_orders: true, cancel_reduce_only_orders: true };
+        const p: CancelAllOrdersPayload = {
+            contract_types: f.contract_types || "perpetual_futures",
+            cancel_limit_orders: f.cancel_limit_orders ?? false,
+            cancel_stop_orders: f.cancel_stop_orders ?? true,
+            cancel_reduce_only_orders: f.cancel_reduce_only_orders ?? true
+        };
         if (f.product_id) p.product_id = f.product_id;
         return (await this.signedRequest("DELETE", "/orders/all", p))?.success ? { success: true } : { success: false };
     }
@@ -325,6 +330,17 @@ export class DeltaExchange {
         const payload = Utils.constructBracketOrderPayload(tp, sl, positionSide);
         const logger = getContextualLogger(tradingCronLogger, logContext);
         if (!payload.stop_loss_order && !payload.take_profit_order) return { success: false, ids: { tp: "", sl: "" } };
+
+        // Clean slate: cancel any existing stop or limit orders for this product to prevent reduce-only conflicts
+        try {
+            const cleanRes = await this.cancelStopOrders({
+                product_id: TradingConfig.getConfig().PRODUCT_ID,
+                cancel_limit_orders: true,
+            });
+            logger.info("Successfully cancelled existing open orders on exchange before placing new bracket.", { cleanRes });
+        } catch (cancelErr) {
+            logger.warn("Failed to cancel existing open orders on exchange before placing bracket:", cancelErr);
+        }
 
         logger.info("Placing TP/SL orders", { tp, sl, payload });
 
@@ -346,7 +362,8 @@ export class DeltaExchange {
             } catch (err: any) {
                 const errorStr = String(err);
                 const isNoPosition = errorStr.toLowerCase().includes("no_open_position") ||
-                    errorStr.toLowerCase().includes("insufficient_position");
+                    errorStr.toLowerCase().includes("insufficient_position") ||
+                    errorStr.toLowerCase().includes("no_position_left_for_reduce_only");
 
                 if (isNoPosition && attempt < maxRetries) {
                     logger.warn(`Bracket order attempt ${attempt} failed due to no open position. Retrying in 1s...`);

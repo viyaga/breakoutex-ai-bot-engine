@@ -268,6 +268,7 @@ export class ProcessPendingState {
 
         const cancelRes = await deltaExchange.cancelStopOrders({
             product_id: TradingConfig.getConfig().PRODUCT_ID,
+            cancel_limit_orders: true,
         });
         getContextualLogger(tradesLogger, logContext).debug("Cancelled existing stop orders during bracket replacement", { cancelRes });
 
