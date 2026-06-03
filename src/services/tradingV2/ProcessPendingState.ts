@@ -402,6 +402,7 @@ export class ProcessPendingState {
             );
 
             let tpUpdatedValue = tpPrice || 0;
+            let isTpAlreadyTriggered = false;
             if (s.takeProfitOrderId && tpPrice && tp) {
                 const updateTpRes = await deltaExchange.updateTakeProfitOrder(
                     s.takeProfitOrderId,
@@ -413,7 +414,19 @@ export class ProcessPendingState {
                 );
                 if (updateTpRes.success) {
                     tpUpdatedValue = updateTpRes.tpPrice;
+                } else if (updateTpRes.isAlreadyTriggered) {
+                    isTpAlreadyTriggered = true;
                 }
+            }
+
+            if (!updateRes.success && updateRes.isAlreadyTriggered) {
+                logger.warn(`Stop loss order for ${sym} is already triggered. Skipping trailing updates.`);
+                return s;
+            }
+
+            if (isTpAlreadyTriggered) {
+                logger.warn(`Take profit order for ${sym} is already triggered. Skipping trailing updates.`);
+                return s;
             }
 
             if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === tpPrice) return s;

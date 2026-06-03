@@ -159,7 +159,7 @@ export class DeltaExchange {
         orderSide: OrderSide,
         sl: number,
         logContext?: any
-    ): Promise<{ success: boolean, slPrice: number, isSlSame?: boolean, isSlReversed?: boolean }> {
+    ): Promise<{ success: boolean, slPrice: number, isSlSame?: boolean, isSlReversed?: boolean, isAlreadyTriggered?: boolean }> {
 
         // NOTE: This method now validates the stop‑loss direction against the current market price
         // and ensures a non‑zero safety buffer so the order cannot be executed immediately.
@@ -246,11 +246,18 @@ export class DeltaExchange {
 
         logger.info("Updating Stop Loss Order", { payload });
 
-        const updateRes: any = await this.signedRequest("PUT", "/orders", payload);
-
-        logger.debug("Updated Stop Loss Order response", { updateRes });
-
-        return { success: updateRes?.success ?? false, slPrice: sl };
+        try {
+            const updateRes: any = await this.signedRequest("PUT", "/orders", payload);
+            logger.debug("Updated Stop Loss Order response", { updateRes });
+            return { success: updateRes?.success ?? false, slPrice: sl };
+        } catch (error: any) {
+            const errMsg = error?.message || String(error);
+            if (errMsg.includes("stop_price_change_not_supported")) {
+                logger.warn(`Stop loss order ${id} is already triggered and cannot be updated. Skipping trailing.`);
+                return { success: false, slPrice: sl, isAlreadyTriggered: true };
+            }
+            throw error;
+        }
     }
 
     async updateTakeProfitOrder(
@@ -260,7 +267,7 @@ export class DeltaExchange {
         productSymbol: string,
         tp: number,
         logContext?: any
-    ): Promise<{ success: boolean, tpPrice: number, isTpSame?: boolean }> {
+    ): Promise<{ success: boolean, tpPrice: number, isTpSame?: boolean, isAlreadyTriggered?: boolean }> {
 
         const logger = getContextualLogger(tradingCronLogger, logContext);
 
@@ -285,11 +292,18 @@ export class DeltaExchange {
 
         logger.info("Updating Take Profit Order", { payload });
 
-        const updateRes: any = await this.signedRequest("PUT", "/orders", payload);
-
-        logger.debug("Updated Take Profit Order response", { updateRes });
-
-        return { success: updateRes?.success ?? false, tpPrice: tp };
+        try {
+            const updateRes: any = await this.signedRequest("PUT", "/orders", payload);
+            logger.debug("Updated Take Profit Order response", { updateRes });
+            return { success: updateRes?.success ?? false, tpPrice: tp };
+        } catch (error: any) {
+            const errMsg = error?.message || String(error);
+            if (errMsg.includes("stop_price_change_not_supported") || errMsg.includes("order_already_triggered")) {
+                logger.warn(`Take profit order ${id} is already triggered and cannot be updated. Skipping trailing.`);
+                return { success: false, tpPrice: tp, isAlreadyTriggered: true };
+            }
+            throw error;
+        }
     }
 
     async placeEntryOrder(symbol: string, side: OrderSide, qty: number, cid?: string) {
