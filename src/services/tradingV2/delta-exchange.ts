@@ -252,8 +252,15 @@ export class DeltaExchange {
             return { success: updateRes?.success ?? false, slPrice: sl };
         } catch (error: any) {
             const errMsg = error?.message || String(error);
-            if (errMsg.includes("stop_price_change_not_supported")) {
-                logger.warn(`Stop loss order ${id} is already triggered and cannot be updated. Skipping trailing.`);
+            const errLower = errMsg.toLowerCase();
+            if (
+                errLower.includes("stop_price_change_not_supported") ||
+                errLower.includes("order_already_triggered") ||
+                errLower.includes("no_position_left_for_reduce_only") ||
+                errLower.includes("insufficient_position") ||
+                errLower.includes("no_open_position")
+            ) {
+                logger.warn(`Stop loss order ${id} is already triggered or position is closed. Skipping trailing.`);
                 return { success: false, slPrice: sl, isAlreadyTriggered: true };
             }
             throw error;
@@ -298,8 +305,15 @@ export class DeltaExchange {
             return { success: updateRes?.success ?? false, tpPrice: tp };
         } catch (error: any) {
             const errMsg = error?.message || String(error);
-            if (errMsg.includes("stop_price_change_not_supported") || errMsg.includes("order_already_triggered")) {
-                logger.warn(`Take profit order ${id} is already triggered and cannot be updated. Skipping trailing.`);
+            const errLower = errMsg.toLowerCase();
+            if (
+                errLower.includes("stop_price_change_not_supported") ||
+                errLower.includes("order_already_triggered") ||
+                errLower.includes("no_position_left_for_reduce_only") ||
+                errLower.includes("insufficient_position") ||
+                errLower.includes("no_open_position")
+            ) {
+                logger.warn(`Take profit order ${id} is already triggered or position is closed. Skipping trailing.`);
                 return { success: false, tpPrice: tp, isAlreadyTriggered: true };
             }
             throw error;
@@ -326,7 +340,7 @@ export class DeltaExchange {
         return (await this.signedRequest("GET", "/positions", undefined, pid ? new URLSearchParams({ product_id: String(pid) }) : undefined))?.result ?? null;
     }
 
-    async placeTPSLBracketOrder(tp: number, sl: number, positionSide: OrderSide, logContext?: any): Promise<{ success: boolean; ids: { tp: string; sl: string } }> {
+    async placeTPSLBracketOrder(tp: number, sl: number, positionSide: OrderSide, logContext?: any): Promise<{ success: boolean; ids: { tp: string; sl: string }; isNoPosition?: boolean }> {
         const payload = Utils.constructBracketOrderPayload(tp, sl, positionSide);
         const logger = getContextualLogger(tradingCronLogger, logContext);
         if (!payload.stop_loss_order && !payload.take_profit_order) return { success: false, ids: { tp: "", sl: "" } };
@@ -372,7 +386,12 @@ export class DeltaExchange {
                 }
 
                 logger.error(`Bracket order attempt ${attempt} failed with error:`, err);
-                if (attempt === maxRetries) throw new Error(`Failed to place TPSL bracket order after ${maxRetries} attempts: ${err}`);
+                if (attempt === maxRetries) {
+                    if (isNoPosition) {
+                        return { success: false, ids: { tp: "", sl: "" }, isNoPosition: true };
+                    }
+                    throw new Error(`Failed to place TPSL bracket order after ${maxRetries} attempts: ${err}`);
+                }
             }
 
             if (attempt < maxRetries) {

@@ -284,9 +284,13 @@ export class ProcessPendingState {
         }
 
         const bracketRes =
-            await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side);
+            await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext);
 
         if (!bracketRes.success) {
+            if (bracketRes.isNoPosition) {
+                getContextualLogger(tradesLogger, logContext).warn(`[Recovery] Bracket order placement failed because position is already closed. Skipping recovery.`);
+                return state;
+            }
             throw new Error("TP/SL placement failed");
         }
 
