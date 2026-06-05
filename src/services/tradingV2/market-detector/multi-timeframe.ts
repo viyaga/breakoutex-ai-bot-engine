@@ -183,6 +183,8 @@ export class MultiTimeframeAlignment {
         let confSlPerc = 0;
         let slLimit = 0;
         let tpLimit = 0;
+        let isSlAlreadyCrossed = false;
+        let crossedReason = "";
         let isExceededMovementLimit = false;
         const leverage = entryConfig.LEVERAGE;
 
@@ -214,6 +216,25 @@ export class MultiTimeframeAlignment {
                 sl = sourceCandle.high * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
             }
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+            /* ================= SL CROSSING SAFETIES ================= */
+            if (direction === "BUY") {
+                if (entryPrice <= sl) {
+                    isSlAlreadyCrossed = true;
+                    crossedReason = `Current price (${entryPrice}) is already below or equal to SL trigger (${sl})`;
+                } else if (entryPrice <= sourceCandle.low) {
+                    isSlAlreadyCrossed = true;
+                    crossedReason = `Current price (${entryPrice}) is already below or equal to source candle low (${sourceCandle.low})`;
+                }
+            } else if (direction === "SELL") {
+                if (entryPrice >= sl) {
+                    isSlAlreadyCrossed = true;
+                    crossedReason = `Current price (${entryPrice}) is already above or equal to SL trigger (${sl})`;
+                } else if (entryPrice >= sourceCandle.high) {
+                    isSlAlreadyCrossed = true;
+                    crossedReason = `Current price (${entryPrice}) is already above or equal to source candle high (${sourceCandle.high})`;
+                }
+            }
 
             /* ================= DYNAMIC TP ================= */
             const tpPercent = entryConfig.TP_PRICE_MOVEMENT_PERCENT;
@@ -260,7 +281,7 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL PERMISSION ================= */
 
-        let isAllowed = isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit;
+        let isAllowed = isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed;
 
 
         // 🔥 TREND ALIGNMENT FILTER
@@ -292,6 +313,8 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Higher timeframe market conditions too weak or choppy: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
         } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
+        } else if (isSlAlreadyCrossed) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss boundary already crossed before entry: ${crossedReason}`);
         } else if (isExceededMovementLimit) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
         }
