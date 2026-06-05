@@ -35,7 +35,7 @@ export class TradingConfig {
         IS_WEEKEND_SAFETY_ENABLED: true,
         MIN_ENTRY_SCORE: 20,
         MIN_CONFIRMATION_SCORE: 60,
-        MIN_STRUCTURE_SCORE: 40,
+        MIN_STRUCTURE_SCORE: 20,
     }
 
     /* -------------------------------------------------------------------------
