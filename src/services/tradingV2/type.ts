@@ -34,6 +34,9 @@ export interface ConfigType {
     MIN_RR?: number;
     ESTIMATED_FEE_PERCENT: number;
     IS_WEEKEND_SAFETY_ENABLED: boolean;
+    MIN_ENTRY_SCORE?: number;
+    MIN_CONFIRMATION_SCORE?: number;
+    MIN_STRUCTURE_SCORE?: number;
 }
 
 export type MarketEvaluationMode = "structure" | "confirmation" | "entry";

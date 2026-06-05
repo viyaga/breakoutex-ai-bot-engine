@@ -146,8 +146,17 @@ export class MultiTimeframeAlignment {
         else if (finalScore >= 70) decision = "GOOD_TRADE";
         else if (finalScore >= 50) decision = "WEAK_TRADE";
 
+        const minEntry = entryConfig.MIN_ENTRY_SCORE ?? 60;
+        const minConf = entryConfig.MIN_CONFIRMATION_SCORE ?? 60;
+        const minStruct = entryConfig.MIN_STRUCTURE_SCORE ?? 60;
+
+        const isPassingMinScores =
+            entryScore >= minEntry &&
+            confirmationProbability >= minConf &&
+            structureProbability >= minStruct;
+
         // Preliminary permission based on score
-        let isAllowedScore = entryConfig.IS_TESTING || finalScore >= 70;
+        let isAllowedScore = entryConfig.IS_TESTING || (finalScore >= 70 && isPassingMinScores);
 
         /* ================= EXTRA FILTER (OPTIONAL BUT STRONG) ================= */
 
@@ -281,6 +290,8 @@ export class MultiTimeframeAlignment {
             });
         } else if (!entryConfig.IS_TESTING && !isAligned) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Higher timeframe market conditions too weak or choppy: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
+        } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
         } else if (isExceededMovementLimit) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
         }

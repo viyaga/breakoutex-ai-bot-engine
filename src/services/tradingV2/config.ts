@@ -33,6 +33,9 @@ export class TradingConfig {
         CONFIRMATION_LOOKBACK: 36,
         ESTIMATED_FEE_PERCENT: 0.1, // Round-trip fee (0.05% entry + 0.05% exit)
         IS_WEEKEND_SAFETY_ENABLED: true,
+        MIN_ENTRY_SCORE: 20,
+        MIN_CONFIRMATION_SCORE: 60,
+        MIN_STRUCTURE_SCORE: 60,
     }
 
     /* -------------------------------------------------------------------------
