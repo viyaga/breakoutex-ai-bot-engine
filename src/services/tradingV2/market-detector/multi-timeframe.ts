@@ -249,7 +249,7 @@ export class MultiTimeframeAlignment {
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
 
-            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry/CurrentPrice=${entryPrice}, TP=${tp} (${tpPerc.toFixed(2)}%), TP Limit=${tpLimit}, SL=${sl} (${slPerc.toFixed(2)}%), SL Limit=${slLimit}, Net RR=${rr.toFixed(2)} (Fees incl.)`);
+            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry/CurrentPrice=${entryPrice}, TP Trigger=${tp} (${tpPerc.toFixed(2)}%), TP Limit=${tpLimit}, SL Trigger=${sl} (${slPerc.toFixed(2)}%), SL Limit=${slLimit}, Net RR=${rr.toFixed(2)} (Fees incl.)`);
         }
 
         /* ================= FINAL PERMISSION ================= */
@@ -266,7 +266,7 @@ export class MultiTimeframeAlignment {
         /* ================= LOG ================= */
 
         const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
-        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP: ${tp} | TP Limit: ${tpLimit} | SL: ${sl} | SL Limit: ${slLimit} | RR: ${rr.toFixed(2)}`);
+        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | SL Limit: ${slLimit} | RR: ${rr.toFixed(2)}`);
 
         if (isAllowed) {
             marketDetectorLogger.debug(`[MarketProbability] ${symbol} Confirmation`, {

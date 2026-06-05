@@ -208,11 +208,11 @@ export class TradingV2 {
             detectorLogger.info(`[MTF-RESULT] ${symbol}: Score=${mtf.finalScore}, Direction=${mtf.direction}, Decision=${mtf.decision}, Allowed=${mtf.isAllowed}`);
             cronLogger.info(`[MTF] Result: Score=${mtf.finalScore}, Direction=${mtf.direction}, Decision=${mtf.decision}, Allowed=${mtf.isAllowed}`);
             if (mtf.isAllowed) {
-                detectorLogger.info(`[MTF-ALLOWED] ${symbol}: Price Levels target: CurrentPrice=${currentPrice}, TP=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`);
-                cronLogger.info(`[MTF] Price Levels target: CurrentPrice=${currentPrice}, TP=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`);
+                detectorLogger.info(`[MTF-ALLOWED] ${symbol}: Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`);
+                cronLogger.info(`[MTF] Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${mtf.tp} (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${mtf.sl} (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`);
 
                 // Log to separate file for MTF allowed trades
-                mtfAllowedFileLogger.info(`[ALLOWED] ${symbol} | CurrentPrice: ${currentPrice} | Score: ${mtf.finalScore} (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability}) | TP: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | TP Limit: ${mtf.tpLimit} | SL: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | SL Limit: ${mtf.slLimit} | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction}`);
+                mtfAllowedFileLogger.info(`[ALLOWED] ${symbol} | CurrentPrice: ${currentPrice} | Score: ${mtf.finalScore} (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability}) | TP Trigger: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | TP Limit: ${mtf.tpLimit} | SL Trigger: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | SL Limit: ${mtf.slLimit} | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction}`);
             }
 
             // 🔥 RISK REDUCTION: Cap max multiplier at 1.2 instead of 1.5 to reduce capital margin requirement by 20% while still recovering debt in profit

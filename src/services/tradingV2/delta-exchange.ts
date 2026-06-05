@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { TradingConfig } from "./config";
 import { Utils } from "./utils";
-import { tradingCycleErrorLogger, tradingCronLogger, getContextualLogger } from "./logger";
+import { tradingCycleErrorLogger, tradingCronLogger, getContextualLogger, placedOrdersLogger } from "./logger";
 tradingCronLogger.debug('Searched for "DeltaExchange"');
 import { CancelAllOrdersFilter, CancelAllOrdersPayload, OrderDetails, OrderSide, Position, TickerData } from "./type";
 
@@ -213,6 +213,13 @@ export class DeltaExchange {
                         side: orderSide,
                     }
                 );
+                
+                const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+                plLogger.warn(
+                    `[SL_ADJUSTMENT] Stop‑loss price would trigger immediately – adjusted | ` +
+                    `Original SL Trigger: ${slTriggerPrice} | Adjusted SL Trigger: ${adjustedStop} | MarketPrice: ${marketPrice}`
+                );
+
                 slTriggerPrice = adjustedStop;
             }
         }
@@ -224,6 +231,8 @@ export class DeltaExchange {
 
         if (limitPrice === String(Utils.clampPrice(slPrice))) {
             logger.debug("SL prices unchanged. Skipping update.");
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.info(`[SL_UPDATE_SKIPPED] SL prices unchanged | Order ID: ${id} | Current Limit: ${slPrice} | Target Limit: ${limitPrice}`);
             return { success: false, slPrice: sl, isSlSame: true };
         }
 
@@ -233,6 +242,8 @@ export class DeltaExchange {
 
         if (isSlReversed) {
             logger.warn("SL moved in wrong direction. Skipping update.");
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.warn(`[SL_UPDATE_SKIPPED] SL moved in wrong direction | Order ID: ${id} | Current Limit: ${slPrice} | Target Limit: ${limitPrice}`);
             return { success: false, slPrice: sl, isSlReversed: true };
         }
 
@@ -249,10 +260,19 @@ export class DeltaExchange {
         try {
             const updateRes: any = await this.signedRequest("PUT", "/orders", payload);
             logger.debug("Updated Stop Loss Order response", { updateRes });
+            if (updateRes?.success) {
+                const order = updateRes.result || payload;
+                const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+                plLogger.info(`[SL_UPDATE] Symbol: ${productSymbol} | Order ID: ${order.id || id} | SL Trigger (Stop Price): ${order.stop_price} | SL Limit: ${order.limit_price}`);
+            }
             return { success: updateRes?.success ?? false, slPrice: sl };
         } catch (error: any) {
             const errMsg = error?.message || String(error);
             const errLower = errMsg.toLowerCase();
+            
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.warn(`[SL_UPDATE_FAILED] Symbol: ${productSymbol} | Order ID: ${id} | Error: ${errMsg}`);
+
             if (
                 errLower.includes("stop_price_change_not_supported") ||
                 errLower.includes("order_already_triggered") ||
@@ -286,6 +306,8 @@ export class DeltaExchange {
         // TP unchanged
         if (tpLimitPrice === oldTpLimit) {
             logger.debug("TP prices unchanged. Skipping update.");
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.info(`[TP_UPDATE_SKIPPED] TP prices unchanged | Order ID: ${id} | Current Limit: ${tpPrice} | Target Limit: ${tpLimitPrice}`);
             return { success: false, tpPrice: tp, isTpSame: true };
         }
 
@@ -302,10 +324,19 @@ export class DeltaExchange {
         try {
             const updateRes: any = await this.signedRequest("PUT", "/orders", payload);
             logger.debug("Updated Take Profit Order response", { updateRes });
+            if (updateRes?.success) {
+                const order = updateRes.result || payload;
+                const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+                plLogger.info(`[TP_UPDATE] Symbol: ${productSymbol} | Order ID: ${order.id || id} | TP Trigger (Stop Price): ${order.stop_price} | TP Limit: ${order.limit_price}`);
+            }
             return { success: updateRes?.success ?? false, tpPrice: tp };
         } catch (error: any) {
             const errMsg = error?.message || String(error);
             const errLower = errMsg.toLowerCase();
+            
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.warn(`[TP_UPDATE_FAILED] Symbol: ${productSymbol} | Order ID: ${id} | Error: ${errMsg}`);
+
             if (
                 errLower.includes("stop_price_change_not_supported") ||
                 errLower.includes("order_already_triggered") ||
@@ -325,7 +356,7 @@ export class DeltaExchange {
         return deltaExchange.signedRequest("POST", "/orders", { product_id: Number(c.PRODUCT_ID), product_symbol: symbol, side, size: Math.floor(qty), order_type: "market_order", time_in_force: "gtc", client_order_id: cid || `viy-${Date.now()}` });
     }
 
-    async cancelStopOrders(f: CancelAllOrdersFilter): Promise<{ success: boolean }> {
+    async cancelStopOrders(f: CancelAllOrdersFilter, logContext?: any): Promise<{ success: boolean }> {
         const p: CancelAllOrdersPayload = {
             contract_types: f.contract_types || "perpetual_futures",
             cancel_limit_orders: f.cancel_limit_orders ?? false,
@@ -333,7 +364,12 @@ export class DeltaExchange {
             cancel_reduce_only_orders: f.cancel_reduce_only_orders ?? true
         };
         if (f.product_id) p.product_id = f.product_id;
-        return (await this.signedRequest("DELETE", "/orders/all", p))?.success ? { success: true } : { success: false };
+        const success = (await this.signedRequest("DELETE", "/orders/all", p))?.success ? { success: true } : { success: false };
+        
+        const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+        plLogger.info(`[CANCEL_ORDERS] Cancelled existing open orders | Filters: ${JSON.stringify(f)} | Success: ${success.success}`);
+        
+        return success;
     }
 
     async getPositions(pid?: number | string): Promise<Position | Position[] | null> {
@@ -350,7 +386,7 @@ export class DeltaExchange {
             const cleanRes = await this.cancelStopOrders({
                 product_id: TradingConfig.getConfig().PRODUCT_ID,
                 cancel_limit_orders: true,
-            });
+            }, logContext);
             logger.info("Successfully cancelled existing open orders on exchange before placing new bracket.", { cleanRes });
         } catch (cancelErr) {
             logger.warn("Failed to cancel existing open orders on exchange before placing bracket:", cancelErr);
@@ -363,11 +399,24 @@ export class DeltaExchange {
             try {
                 const raw = await this.signedRequest("POST", "/orders/bracket", payload);
                 if (raw?.result) {
+                    const tpOrder = raw.result.take_profit_order;
+                    const slOrder = raw.result.stop_loss_order;
+                    const symbol = TradingConfig.getConfig().SYMBOL;
+                    const c = TradingConfig.getConfig();
+
+                    const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+                    plLogger.info(
+                        `[INITIAL_BRACKET] Symbol: ${symbol} | ` +
+                        `TP ID: ${tpOrder?.id || 'N/A'}, TP Trigger (Stop Price): ${tpOrder?.stop_price || 'N/A'}, TP Limit: ${tpOrder?.limit_price || 'N/A'} | ` +
+                        `SL ID: ${slOrder?.id || 'N/A'}, SL Trigger (Stop Price): ${slOrder?.stop_price || 'N/A'}, SL Limit: ${slOrder?.limit_price || 'N/A'} | ` +
+                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, SL Limit Buffer: ${c.SL_LIMIT_BUFFER_PERCENT}%`
+                    );
+
                     return {
                         success: true,
                         ids: {
-                            tp: raw.result.take_profit_order?.id?.toString(),
-                            sl: raw.result.stop_loss_order?.id?.toString(),
+                            tp: tpOrder?.id?.toString(),
+                            sl: slOrder?.id?.toString(),
                         },
                     };
                 }
@@ -375,6 +424,10 @@ export class DeltaExchange {
                 logger.warn(`Bracket order attempt ${attempt} failed: Empty result (raw: ${JSON.stringify(raw)})`);
             } catch (err: any) {
                 const errorStr = String(err);
+                
+                const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+                plLogger.warn(`[INITIAL_BRACKET_FAILED] Symbol: ${TradingConfig.getConfig().SYMBOL} | Attempt: ${attempt}/${maxRetries} | Error: ${errorStr}`);
+
                 const isNoPosition = errorStr.toLowerCase().includes("no_open_position") ||
                     errorStr.toLowerCase().includes("insufficient_position") ||
                     errorStr.toLowerCase().includes("no_position_left_for_reduce_only");
