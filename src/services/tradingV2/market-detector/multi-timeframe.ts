@@ -123,6 +123,17 @@ export class MultiTimeframeAlignment {
             };
         }
 
+        /* ================= STRUCTURE TREND DIRECTION ALIGNMENT ================= */
+        const structEma20 = Utils.calculateEMA(structureCandles, 20);
+        let isStructTrendAligned = true;
+        if (structEma20 > 0) {
+            if (direction === "BUY" && structureTarget.close < structEma20) {
+                isStructTrendAligned = false;
+            } else if (direction === "SELL" && structureTarget.close > structEma20) {
+                isStructTrendAligned = false;
+            }
+        }
+
         /* ================= FINAL SCORE ================= */
 
         // 🔥 Highly Balanced Win-Rate Strategy: 25% Entry, 45% Confirmation, 30% Structure
@@ -285,7 +296,7 @@ export class MultiTimeframeAlignment {
 
 
         // 🔥 TREND ALIGNMENT FILTER
-        const isAligned = confirmationProbability >= 50 && structureProbability >= 50;
+        const isAligned = confirmationProbability >= 50 && structureProbability >= 50 && isStructTrendAligned;
         if (!entryConfig.IS_TESTING && !isAligned) {
             isAllowed = false;
         }
@@ -310,7 +321,11 @@ export class MultiTimeframeAlignment {
                 details: structureResult.details,
             });
         } else if (!entryConfig.IS_TESTING && !isAligned) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Higher timeframe market conditions too weak or choppy: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
+            if (!isStructTrendAligned) {
+                marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Structure (${entryConfig.STRUCTURE_TIMEFRAME}) trend direction conflict: Price=${structureTarget.close}, EMA20=${structEma20.toFixed(4)} for ${direction} trade`);
+            } else {
+                marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Higher timeframe market conditions too weak or choppy: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
+            }
         } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
         } else if (isSlAlreadyCrossed) {
