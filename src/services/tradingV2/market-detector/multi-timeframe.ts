@@ -182,9 +182,6 @@ export class MultiTimeframeAlignment {
 
         if (entryPrice > 0) {
             /* ================= DYNAMIC SL ================= */
-            const isStructAligned = (direction === "BUY" && structureTarget.color === "green") ||
-                (direction === "SELL" && structureTarget.color === "red");
-
             const structSlPrice = direction === "BUY" ? structureTarget.low : structureTarget.high;
             const confSlPrice = direction === "BUY" ? confirmationTarget.low : confirmationTarget.high;
 
@@ -194,7 +191,7 @@ export class MultiTimeframeAlignment {
             const maxLimit = entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT;
             let sourceCandle = confirmationTarget;
 
-            if (isStructAligned && structSlPerc <= maxLimit) {
+            if (structSlPerc <= maxLimit) {
                 sourceCandle = structureTarget;
             } else {
                 if (confSlPerc > maxLimit) {
