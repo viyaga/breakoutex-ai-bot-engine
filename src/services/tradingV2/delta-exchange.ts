@@ -226,24 +226,24 @@ export class DeltaExchange {
 
         const stopPrice = String(Utils.clampPrice(slTriggerPrice));
         const limitPrice = String(Utils.clampPrice(slLimitPrice));
-        const newSlLimit = Number(limitPrice);
-        const oldSlLimit = Number(slPrice);
+        const newSlTrigger = Number(stopPrice);
+        const oldSlTrigger = Number(slPrice);
 
-        if (limitPrice === String(Utils.clampPrice(slPrice))) {
+        if (stopPrice === String(Utils.clampPrice(slPrice))) {
             logger.debug("SL prices unchanged. Skipping update.");
             const plLogger = getContextualLogger(placedOrdersLogger, logContext);
-            plLogger.info(`[SL_UPDATE_SKIPPED] SL prices unchanged | Order ID: ${id} | Current Limit: ${slPrice} | Target Limit: ${limitPrice}`);
+            plLogger.info(`[SL_UPDATE_SKIPPED] SL prices unchanged | Order ID: ${id} | Current Trigger: ${slPrice} | Target Trigger: ${stopPrice}`);
             return { success: false, slPrice: sl, isSlSame: true };
         }
 
         const isSlReversed =
-            (orderSide === "buy" && newSlLimit < oldSlLimit) ||
-            (orderSide === "sell" && newSlLimit > oldSlLimit);
+            (orderSide === "buy" && newSlTrigger < oldSlTrigger) ||
+            (orderSide === "sell" && newSlTrigger > oldSlTrigger);
 
         if (isSlReversed) {
             logger.warn("SL moved in wrong direction. Skipping update.");
             const plLogger = getContextualLogger(placedOrdersLogger, logContext);
-            plLogger.warn(`[SL_UPDATE_SKIPPED] SL moved in wrong direction | Order ID: ${id} | Current Limit: ${slPrice} | Target Limit: ${limitPrice}`);
+            plLogger.warn(`[SL_UPDATE_SKIPPED] SL moved in wrong direction | Order ID: ${id} | Current Trigger: ${slPrice} | Target Trigger: ${stopPrice}`);
             return { success: false, slPrice: sl, isSlReversed: true };
         }
 
