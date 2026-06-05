@@ -22,6 +22,8 @@ export interface TripleTFResult {
     rr: number;
     tpPerc: number;
     slPerc: number;
+    slLimit: number;
+    tpLimit: number;
 }
 
 export class MultiTimeframeAlignment {
@@ -116,6 +118,8 @@ export class MultiTimeframeAlignment {
                 rr: 0,
                 tpPerc: 0,
                 slPerc: 0,
+                slLimit: 0,
+                tpLimit: 0,
             };
         }
 
@@ -168,6 +172,8 @@ export class MultiTimeframeAlignment {
         let slPerc = 0;
         let structSlPerc = 0;
         let confSlPerc = 0;
+        let slLimit = 0;
+        let tpLimit = 0;
         let isExceededMovementLimit = false;
         const leverage = entryConfig.LEVERAGE;
 
@@ -219,9 +225,11 @@ export class MultiTimeframeAlignment {
             }
 
             /* ================= METRICS & RR ================= */
-            const slLimit = direction === "BUY"
+            const rawSlLimit = direction === "BUY"
                 ? sourceCandle.low * (1 - entryConfig.SL_LIMIT_BUFFER_PERCENT / 100)
                 : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
+            slLimit = parseFloat(rawSlLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+            tpLimit = tp;
 
             const rawRisk = Math.abs(entryPrice - sl);
             const riskPriceDist = Math.abs(entryPrice - slLimit);
@@ -241,7 +249,7 @@ export class MultiTimeframeAlignment {
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
 
-            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry=${entryPrice}, TP=${tp} (${tpPerc.toFixed(2)}%), SL=${sl} (${slPerc.toFixed(2)}%), Net RR=${rr.toFixed(2)} (Fees incl.)`);
+            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry/CurrentPrice=${entryPrice}, TP=${tp} (${tpPerc.toFixed(2)}%), TP Limit=${tpLimit}, SL=${sl} (${slPerc.toFixed(2)}%), SL Limit=${slLimit}, Net RR=${rr.toFixed(2)} (Fees incl.)`);
         }
 
         /* ================= FINAL PERMISSION ================= */
@@ -258,7 +266,7 @@ export class MultiTimeframeAlignment {
         /* ================= LOG ================= */
 
         const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
-        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | RR: ${rr.toFixed(2)} | TP: ${tp} | SL: ${sl}`);
+        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP: ${tp} | TP Limit: ${tpLimit} | SL: ${sl} | SL Limit: ${slLimit} | RR: ${rr.toFixed(2)}`);
 
         if (isAllowed) {
             marketDetectorLogger.debug(`[MarketProbability] ${symbol} Confirmation`, {
@@ -293,6 +301,8 @@ export class MultiTimeframeAlignment {
             rr,
             tpPerc,
             slPerc,
+            slLimit,
+            tpLimit,
         };
     }
 }
