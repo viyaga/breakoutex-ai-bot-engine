@@ -398,6 +398,7 @@ export class DeltaExchange {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 const raw = await this.signedRequest("POST", "/orders/bracket", payload);
+                logger.info("Bracket order placement raw response from exchange:", { raw });
                 if (raw?.result) {
                     const tpOrder = raw.result.take_profit_order;
                     const slOrder = raw.result.stop_loss_order;
@@ -411,6 +412,7 @@ export class DeltaExchange {
                         `SL ID: ${slOrder?.id || 'N/A'}, SL Trigger (Stop Price): ${slOrder?.stop_price || 'N/A'}, SL Limit: ${slOrder?.limit_price || 'N/A'} | ` +
                         `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, SL Limit Buffer: ${c.SL_LIMIT_BUFFER_PERCENT}%`
                     );
+                    plLogger.info("Bracket order raw response details:", { raw });
 
                     return {
                         success: true,
