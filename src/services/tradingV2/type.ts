@@ -37,6 +37,7 @@ export interface ConfigType {
     MIN_ENTRY_SCORE?: number;
     MIN_CONFIRMATION_SCORE?: number;
     MIN_STRUCTURE_SCORE?: number;
+    MIN_FINAL_SCORE?: number;
 }
 
 export type MarketEvaluationMode = "structure" | "confirmation" | "entry";
@@ -290,6 +291,7 @@ export interface ActiveSubscribedBot {
     MAX_TRADE_SIZE: number
     TRADING_MODE: "conservative" | "balanced" | "aggressive" | "meme"
     MIN_RR?: number
+    MIN_FINAL_SCORE?: number
     DAILY_LOSS_LIMIT: number
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number

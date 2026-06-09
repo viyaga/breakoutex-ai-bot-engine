@@ -216,7 +216,8 @@ export class TradingV2 {
             }
 
             // 🔥 RISK REDUCTION: Cap max multiplier at 1.2 instead of 1.5 to reduce capital margin requirement by 20% while still recovering debt in profit
-            const scoreMultiplier = mtf.finalScore > 90 ? 2 : mtf.finalScore > 85 ? 1.5 : mtf.finalScore > 80 ? 1.2 : mtf.finalScore > 75 ? 1 : mtf.finalScore >= 70 ? 0.5 : 0;
+            const minFinal = c.MIN_FINAL_SCORE ?? 70;
+            const scoreMultiplier = mtf.finalScore > 90 ? 2 : mtf.finalScore > 85 ? 1.5 : mtf.finalScore > 80 ? 1.2 : mtf.finalScore > 75 ? 1 : mtf.finalScore >= minFinal ? 0.5 : 0;
 
             // ───────────────── STATE ─────────────────
             let state = await Data.getOrCreateState(

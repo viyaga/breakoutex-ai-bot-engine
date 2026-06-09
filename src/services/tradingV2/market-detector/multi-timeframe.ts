@@ -170,8 +170,10 @@ export class MultiTimeframeAlignment {
             confirmationProbability >= minConf &&
             structureProbability >= minStruct;
 
+        const minFinal = entryConfig.MIN_FINAL_SCORE ?? 70;
+
         // Preliminary permission based on score
-        let isAllowedScore = entryConfig.IS_TESTING || (finalScore >= 70 && isPassingMinScores);
+        let isAllowedScore = entryConfig.IS_TESTING || (finalScore >= minFinal && isPassingMinScores);
 
         /* ================= EXTRA FILTER (OPTIONAL BUT STRONG) ================= */
 
