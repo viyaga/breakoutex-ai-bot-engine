@@ -41,6 +41,9 @@ export class MultiTimeframeAlignment {
         logContext?: any
     ): TripleTFResult {
 
+        // 🔥 Use current price if provided, otherwise fallback to candle close (Hybrid/Real-time MTF Evaluation)
+        const entryPrice = currentPriceParam && currentPriceParam > 0 ? currentPriceParam : entryTarget.close;
+
         const confirmationResult = MarketDetector.getMarketProbability(
             confirmationTarget,
             confirmationCandles,
@@ -127,9 +130,10 @@ export class MultiTimeframeAlignment {
         const structEma20 = Utils.calculateEMA(structureCandles, 20);
         let isStructTrendAligned = true;
         if (structEma20 > 0) {
-            if (direction === "BUY" && structureTarget.close < structEma20) {
+            // 🔥 Hybrid approach: Compare the real-time entryPrice against the structure EMA
+            if (direction === "BUY" && entryPrice < structEma20) {
                 isStructTrendAligned = false;
-            } else if (direction === "SELL" && structureTarget.close > structEma20) {
+            } else if (direction === "SELL" && entryPrice > structEma20) {
                 isStructTrendAligned = false;
             }
         }
@@ -198,9 +202,6 @@ export class MultiTimeframeAlignment {
         let crossedReason = "";
         let isExceededMovementLimit = false;
         const leverage = entryConfig.LEVERAGE;
-
-        // 🔥 Use current price if provided, otherwise fallback to candle close
-        const entryPrice = currentPriceParam && currentPriceParam > 0 ? currentPriceParam : entryTarget.close;
 
         if (entryPrice > 0) {
             /* ================= DYNAMIC SL ================= */
@@ -322,7 +323,7 @@ export class MultiTimeframeAlignment {
             });
         } else if (!entryConfig.IS_TESTING && !isAligned) {
             if (!isStructTrendAligned) {
-                marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Structure (${entryConfig.STRUCTURE_TIMEFRAME}) trend direction conflict: Price=${structureTarget.close}, EMA20=${structEma20.toFixed(4)} for ${direction} trade`);
+                marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Structure (${entryConfig.STRUCTURE_TIMEFRAME}) trend direction conflict: Price=${entryPrice}, EMA20=${structEma20.toFixed(4)} for ${direction} trade`);
             } else {
                 marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Higher timeframe market conditions too weak or choppy: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
             }
