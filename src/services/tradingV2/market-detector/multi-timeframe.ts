@@ -153,7 +153,23 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF] ${symbol}: Alignment Bonus! Both 15m and 1h breakouts aligned in ${direction} direction. Added +10 to final score (Final: ${finalScore})`);
         }
 
-        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.25) + (${confirmationProbability} * 0.45) + (${structureProbability} * 0.30) = Final: ${finalScore}`);
+        // 🔥 Trend Alignment Score Adjustment (Instead of blocking the trade)
+        const isAligned = confirmationProbability >= 50 && structureProbability >= 50 && isStructTrendAligned;
+        if (isAligned) {
+            finalScore = Math.min(100, finalScore + 5);
+            marketDetectorLogger.info(`[MTF] ${symbol}: Trend Aligned Bonus! Added +5 to final score (Final: ${finalScore})`);
+        } else {
+            const penalty = 15;
+            const reasons = [];
+            if (confirmationProbability < 50) reasons.push(`Confirmation Prob < 50 (${confirmationProbability})`);
+            if (structureProbability < 50) reasons.push(`Structure Prob < 50 (${structureProbability})`);
+            if (!isStructTrendAligned) reasons.push("Structure EMA trend mismatch");
+            
+            finalScore = Math.max(0, finalScore - penalty);
+            marketDetectorLogger.info(`[MTF] ${symbol}: Trend Alignment Mismatch (${reasons.join(", ")}). Applied -${penalty} penalty to final score (Final: ${finalScore})`);
+        }
+
+        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.25) + (${confirmationProbability} * 0.45) + (${structureProbability} * 0.30) [with adjustments] = Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
 
@@ -297,13 +313,6 @@ export class MultiTimeframeAlignment {
 
         let isAllowed = isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed;
 
-
-        // 🔥 TREND ALIGNMENT FILTER
-        const isAligned = confirmationProbability >= 50 && structureProbability >= 50 && isStructTrendAligned;
-        if (!entryConfig.IS_TESTING && !isAligned) {
-            isAllowed = false;
-        }
-
         /* ================= LOG ================= */
 
         const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
@@ -323,12 +332,6 @@ export class MultiTimeframeAlignment {
                 mode: structureResult.mode,
                 details: structureResult.details,
             });
-        } else if (!entryConfig.IS_TESTING && !isAligned) {
-            if (!isStructTrendAligned) {
-                marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Structure (${entryConfig.STRUCTURE_TIMEFRAME}) trend direction conflict: Price=${entryPrice}, EMA20=${structEma20.toFixed(4)} for ${direction} trade`);
-            } else {
-                marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Higher timeframe market conditions too weak or choppy: Confirmation=${confirmationProbability}, Structure=${structureProbability}`);
-            }
         } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
         } else if (isSlAlreadyCrossed) {
