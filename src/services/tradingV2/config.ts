@@ -36,7 +36,7 @@ export class TradingConfig {
         MIN_ENTRY_SCORE: 0,
         MIN_CONFIRMATION_SCORE: 60,
         MIN_STRUCTURE_SCORE: 20,
-        MIN_FINAL_SCORE: 65,
+        MIN_FINAL_SCORE: 60,
     }
 
     /* -------------------------------------------------------------------------
