@@ -54,6 +54,8 @@ Content-Type: application/json
 | `TAKE_PROFIT_PERCENT` | number | Take profit percentage (30x = 3000%) | `3000` |
 | `SL_TRIGGER_BUFFER_PERCENT` | number | Stop loss trigger buffer | `0.1` |
 | `SL_LIMIT_BUFFER_PERCENT` | number | Stop loss limit buffer | `0.2` |
+| `TP_TRIGGER_BUFFER_PERCENT` | number | Take profit trigger buffer | `0.2` |
+| `TP_LIMIT_BUFFER_PERCENT` | number | Take profit limit buffer | `0.3` |
 | `DRY_RUN` | boolean | Enable dry run mode (no actual trades) | `true` |
 | `IS_TESTING` | boolean | Enable testing mode | `false` |
 

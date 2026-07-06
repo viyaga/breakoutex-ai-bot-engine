@@ -268,11 +268,15 @@ export class MultiTimeframeAlignment {
 
             /* ================= DYNAMIC TP ================= */
             const tpPercent = entryConfig.TP_PRICE_MOVEMENT_PERCENT;
+            let baseTp: number;
             if (direction === "BUY") {
-                tp = entryPrice * (1 + tpPercent / 100);
+                baseTp = entryPrice * (1 + tpPercent / 100);
             } else {
-                tp = entryPrice * (1 - tpPercent / 100);
+                baseTp = entryPrice * (1 - tpPercent / 100);
             }
+
+            const tpTriggerFactor = 1 - (direction === "BUY" ? entryConfig.TP_TRIGGER_BUFFER_PERCENT : -entryConfig.TP_TRIGGER_BUFFER_PERCENT) / 100;
+            tp = baseTp * tpTriggerFactor;
 
             if (tp <= 0) {
                 // Minimum positive value based on decimals (e.g., 0.0001 for 4)
@@ -286,17 +290,24 @@ export class MultiTimeframeAlignment {
                 ? sourceCandle.low * (1 - entryConfig.SL_LIMIT_BUFFER_PERCENT / 100)
                 : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
             slLimit = parseFloat(rawSlLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-            tpLimit = tp;
+
+            const tpLimitFactor = 1 - (direction === "BUY" ? entryConfig.TP_LIMIT_BUFFER_PERCENT : -entryConfig.TP_LIMIT_BUFFER_PERCENT) / 100;
+            const rawTpLimit = baseTp * tpLimitFactor;
+            if (rawTpLimit <= 0) {
+                tpLimit = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+            } else {
+                tpLimit = parseFloat(rawTpLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+            }
 
             const rawRisk = Math.abs(entryPrice - sl);
             const riskPriceDist = Math.abs(entryPrice - slLimit);
-            const rewardPriceDist = Math.abs(tp - entryPrice);
+            const rewardPriceDist = Math.abs(tpLimit - entryPrice);
 
             // Include Estimated Fees in RR
             const feePercent = entryConfig.ESTIMATED_FEE_PERCENT / 100;
             const entryFee = entryPrice * (feePercent / 2);
-            const exitFeeTp = tp * (feePercent / 2);
-            const exitFeeSl = sl * (feePercent / 2);
+            const exitFeeTp = tpLimit * (feePercent / 2);
+            const exitFeeSl = slLimit * (feePercent / 2);
 
             const netReward = rewardPriceDist - (entryFee + exitFeeTp);
             const netRisk = riskPriceDist + (entryFee + exitFeeSl);
@@ -306,7 +317,7 @@ export class MultiTimeframeAlignment {
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
 
-            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry/CurrentPrice=${entryPrice}, TP Trigger=${tp} (${tpPerc.toFixed(2)}%), TP Limit=${tpLimit}, SL Trigger=${sl} (${slPerc.toFixed(2)}%), SL Limit=${slLimit}, Net RR=${rr.toFixed(2)} (Fees incl.)`);
+            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry/CurrentPrice=${entryPrice}, TP Trigger=${tp}, TP Limit=${tpLimit} (${tpPerc.toFixed(2)}%), SL Trigger=${sl}, SL Limit=${slLimit} (${slPerc.toFixed(2)}%), Net RR=${rr.toFixed(2)} (Fees incl.)`);
         }
 
         /* ================= FINAL PERMISSION ================= */

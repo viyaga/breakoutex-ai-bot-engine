@@ -414,6 +414,7 @@ export class ProcessPendingState {
                     tpPrice,
                     TradingConfig.getConfig().PRODUCT_ID,
                     sym,
+                    e.side,
                     tp,
                     logContext
                 );

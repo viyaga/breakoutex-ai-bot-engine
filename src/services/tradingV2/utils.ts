@@ -99,8 +99,14 @@ export class Utils {
         const triggerFactor = 1 - (positionSide === "buy" ? c.SL_TRIGGER_BUFFER_PERCENT : -c.SL_TRIGGER_BUFFER_PERCENT) / 100;
         const limitFactor = 1 - (positionSide === "buy" ? c.SL_LIMIT_BUFFER_PERCENT : -c.SL_LIMIT_BUFFER_PERCENT) / 100;
 
+        const tpTriggerFactor = 1 - (positionSide === "buy" ? c.TP_TRIGGER_BUFFER_PERCENT : -c.TP_TRIGGER_BUFFER_PERCENT) / 100;
+        const tpLimitFactor = 1 - (positionSide === "buy" ? c.TP_LIMIT_BUFFER_PERCENT : -c.TP_LIMIT_BUFFER_PERCENT) / 100;
+
         const slTriggerPrice = sl;
         const slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
+
+        const tpTriggerPrice = tp;
+        const tpLimitPrice = tpTriggerFactor !== 0 ? tp * (tpLimitFactor / tpTriggerFactor) : tp;
 
         const payload = {
             product_id: Number(c.PRODUCT_ID),
@@ -110,8 +116,8 @@ export class Utils {
             ...(tp && {
                 take_profit_order: {
                     order_type: "limit_order",
-                    stop_price: String(tp),
-                    limit_price: String(tp),
+                    stop_price: String(this.clampPrice(tpTriggerPrice)),
+                    limit_price: String(this.clampPrice(tpLimitPrice)),
                 },
             }),
 

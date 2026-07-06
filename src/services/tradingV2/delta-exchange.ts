@@ -292,22 +292,35 @@ export class DeltaExchange {
         tpPrice: number,
         productId: number | string,
         productSymbol: string,
+        orderSide: OrderSide,
         tp: number,
         logContext?: any
     ): Promise<{ success: boolean, tpPrice: number, isTpSame?: boolean, isAlreadyTriggered?: boolean }> {
 
         const logger = getContextualLogger(tradingCronLogger, logContext);
+        const c = TradingConfig.getConfig();
 
-        const tpLimitPrice = String(Utils.clampPrice(tp));
-        const oldTpLimit = String(Utils.clampPrice(tpPrice));
+        const triggerBufferPct = Math.max(c.TP_TRIGGER_BUFFER_PERCENT, 0.01);
+        const limitBufferPct = Math.max(c.TP_LIMIT_BUFFER_PERCENT, 0.01);
+        const triggerFactor =
+            1 - (orderSide === "buy" ? triggerBufferPct : -triggerBufferPct) / 100;
+        const limitFactor =
+            1 - (orderSide === "buy" ? limitBufferPct : -limitBufferPct) / 100;
 
-        logger.debug("TP price calculation", { tpLimitPrice, oldTpLimit, tp, tpPrice });
+        const tpTriggerPrice = tp;
+        const tpLimitPriceVal = triggerFactor !== 0 ? tp * (limitFactor / triggerFactor) : tp;
+
+        const stopPrice = String(Utils.clampPrice(tpTriggerPrice));
+        const limitPrice = String(Utils.clampPrice(tpLimitPriceVal));
+        const oldTpTrigger = String(Utils.clampPrice(tpPrice));
+
+        logger.debug("TP price calculation", { stopPrice, limitPrice, oldTpTrigger, tp, tpPrice });
 
         // TP unchanged
-        if (tpLimitPrice === oldTpLimit) {
+        if (stopPrice === oldTpTrigger) {
             logger.debug("TP prices unchanged. Skipping update.");
             const plLogger = getContextualLogger(placedOrdersLogger, logContext);
-            plLogger.info(`[TP_UPDATE_SKIPPED] TP prices unchanged | Order ID: ${id} | Current Limit: ${tpPrice} | Target Limit: ${tpLimitPrice}`);
+            plLogger.info(`[TP_UPDATE_SKIPPED] TP prices unchanged | Order ID: ${id} | Current Trigger: ${tpPrice} | Target Trigger: ${stopPrice}`);
             return { success: false, tpPrice: tp, isTpSame: true };
         }
 
@@ -315,8 +328,8 @@ export class DeltaExchange {
             id,
             product_id: Number(productId),
             product_symbol: productSymbol,
-            limit_price: tpLimitPrice,
-            stop_price: tpLimitPrice,
+            limit_price: limitPrice,
+            stop_price: stopPrice,
         };
 
         logger.info("Updating Take Profit Order", { payload });
@@ -410,7 +423,7 @@ export class DeltaExchange {
                         `[INITIAL_BRACKET] Symbol: ${symbol} | ` +
                         `TP ID: ${tpOrder?.id || 'N/A'}, TP Trigger (Stop Price): ${tpOrder?.stop_price || 'N/A'}, TP Limit: ${tpOrder?.limit_price || 'N/A'} | ` +
                         `SL ID: ${slOrder?.id || 'N/A'}, SL Trigger (Stop Price): ${slOrder?.stop_price || 'N/A'}, SL Limit: ${slOrder?.limit_price || 'N/A'} | ` +
-                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, SL Limit Buffer: ${c.SL_LIMIT_BUFFER_PERCENT}%`
+                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, SL Limit Buffer: ${c.SL_LIMIT_BUFFER_PERCENT}%, TP Trigger Buffer: ${c.TP_TRIGGER_BUFFER_PERCENT}%, TP Limit Buffer: ${c.TP_LIMIT_BUFFER_PERCENT}%`
                     );
                     plLogger.info("Bracket order raw response details:", { raw });
 
