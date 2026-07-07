@@ -87,10 +87,8 @@ export class TradingV2 {
             );
 
             loggers.cronLogger.info(
-                `[State] Loaded state: ID=${state.id}, Level=${
-                    state.currentLevel
-                }, DailyPnL=$${state.dailyPnl.toFixed(2)}, Outcome=${state.tradeOutcome}, Status=${
-                    state.status
+                `[State] Loaded state: ID=${state.id}, Level=${state.currentLevel
+                }, DailyPnL=$${state.dailyPnl.toFixed(2)}, Outcome=${state.tradeOutcome}, Status=${state.status
                 }`
             );
 
@@ -216,32 +214,23 @@ export class TradingV2 {
 
         if (mtf.isAllowed) {
             loggers.detectorLogger.info(
-                `[MTF-ALLOWED] ${symbol}: Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${
-                    mtf.tp
-                } (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${
-                    mtf.sl
+                `[MTF-ALLOWED] ${symbol}: Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${mtf.tp
+                } (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${mtf.sl
                 } (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`
             );
             loggers.cronLogger.info(
-                `[MTF] Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${
-                    mtf.tp
-                } (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${
-                    mtf.sl
+                `[MTF] Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${mtf.tp
+                } (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${mtf.sl
                 } (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`
             );
 
             // Log to separate file for MTF allowed trades
             loggers.mtfAllowedFileLogger.info(
-                `[ALLOWED] ${symbol} | CurrentPrice: ${currentPrice} | Score: ${
-                    mtf.finalScore
-                } (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${
-                    mtf.structureProbability
-                }) | TP Trigger: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | TP Limit: ${
-                    mtf.tpLimit
-                } | SL Trigger: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | SL Limit: ${
-                    mtf.slLimit
-                } | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${
-                    mtf.direction
+                `[ALLOWED] ${symbol} | CurrentPrice: ${currentPrice} | Score: ${mtf.finalScore
+                } (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability
+                }) | TP Trigger: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | TP Limit: ${mtf.tpLimit
+                } | SL Trigger: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | SL Limit: ${mtf.slLimit
+                } | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction
                 }`
             );
         }
@@ -251,14 +240,14 @@ export class TradingV2 {
         return mtf.finalScore > 90
             ? 2
             : mtf.finalScore > 85
-            ? 1.5
-            : mtf.finalScore > 80
-            ? 1.2
-            : mtf.finalScore > 75
-            ? 1
-            : mtf.finalScore >= minFinal
-            ? 0.5
-            : 0;
+                ? 1.5
+                : mtf.finalScore > 80
+                    ? 1.2
+                    : mtf.finalScore > 75
+                        ? 1
+                        : mtf.finalScore >= minFinal
+                            ? 0.5
+                            : 0;
     }
 
     private static async handlePendingTrade(
@@ -364,6 +353,12 @@ export class TradingV2 {
         } else if (errorStr.includes("product_not_tradable")) {
             errorMessage =
                 "Product Not Tradable: This symbol is currently not available for trading.";
+            shouldStop = true;
+        } else if (
+            errorStr.includes("leverage_sync_failed") ||
+            errorStr.includes("leverage sync failed")
+        ) {
+            errorMessage = "Leverage Sync Failed: Could not sync/change leverage on the exchange.";
             shouldStop = true;
         }
 

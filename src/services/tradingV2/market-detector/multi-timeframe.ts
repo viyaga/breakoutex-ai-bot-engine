@@ -164,7 +164,7 @@ export class MultiTimeframeAlignment {
             if (confirmationProbability < 50) reasons.push(`Confirmation Prob < 50 (${confirmationProbability})`);
             if (structureProbability < 50) reasons.push(`Structure Prob < 50 (${structureProbability})`);
             if (!isStructTrendAligned) reasons.push("Structure EMA trend mismatch");
-            
+
             finalScore = Math.max(0, finalScore - penalty);
             marketDetectorLogger.info(`[MTF] ${symbol}: Trend Alignment Mismatch (${reasons.join(", ")}). Applied -${penalty} penalty to final score (Final: ${finalScore})`);
         }
