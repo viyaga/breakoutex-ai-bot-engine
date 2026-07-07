@@ -89,10 +89,127 @@ export class Utils {
         return Number(price.toFixed(decimals));
     }
 
+    /**
+     * Validates the stop_price and limit_price of a stop order (TP or SL)
+     * against position side, entry/market price, and configured buffers.
+     */
+    static validateStopLimitPrice(params: {
+        type: "tp" | "sl";
+        positionSide: OrderSide;
+        stopPrice: number | string;
+        limitPrice: number | string;
+        entryOrMarketPrice?: number;
+    }): { isValid: boolean; error?: string } {
+        const stopPriceNum = Number(params.stopPrice);
+        const limitPriceNum = Number(params.limitPrice);
+
+        if (isNaN(stopPriceNum) || stopPriceNum <= 0) {
+            return {
+                isValid: false,
+                error: `${params.type.toUpperCase()} stop_price must be a positive number, got: ${params.stopPrice}`
+            };
+        }
+
+        if (isNaN(limitPriceNum) || limitPriceNum <= 0) {
+            return {
+                isValid: false,
+                error: `${params.type.toUpperCase()} limit_price must be a positive number, got: ${params.limitPrice}`
+            };
+        }
+
+        // 1. Verify that stop_price is on the correct side of entry/market price (if provided)
+        if (params.entryOrMarketPrice !== undefined && params.entryOrMarketPrice > 0) {
+            if (params.type === "tp") {
+                if (params.positionSide === "buy" && stopPriceNum <= params.entryOrMarketPrice) {
+                    return {
+                        isValid: false,
+                        error: `TP stop_price (${stopPriceNum}) must be greater than entry/market price (${params.entryOrMarketPrice}) for a buy position`
+                    };
+                }
+                if (params.positionSide === "sell" && stopPriceNum >= params.entryOrMarketPrice) {
+                    return {
+                        isValid: false,
+                        error: `TP stop_price (${stopPriceNum}) must be less than entry/market price (${params.entryOrMarketPrice}) for a sell position`
+                    };
+                }
+            } else { // sl
+                if (params.positionSide === "buy" && stopPriceNum >= params.entryOrMarketPrice) {
+                    return {
+                        isValid: false,
+                        error: `SL stop_price (${stopPriceNum}) must be less than entry/market price (${params.entryOrMarketPrice}) for a buy position`
+                    };
+                }
+                if (params.positionSide === "sell" && stopPriceNum <= params.entryOrMarketPrice) {
+                    return {
+                        isValid: false,
+                        error: `SL stop_price (${stopPriceNum}) must be greater than entry/market price (${params.entryOrMarketPrice}) for a sell position`
+                    };
+                }
+            }
+        }
+
+        // 2. Verify buffer direction (limit_price relative to stop_price)
+        // - For a buy position (long), TP and SL are SELL orders.
+        //   A sell limit order's limit_price must be <= stop_price to ensure execution.
+        // - For a sell position (short), TP and SL are BUY orders.
+        //   A buy limit order's limit_price must be >= stop_price to ensure execution.
+        if (params.positionSide === "buy") {
+            if (limitPriceNum > stopPriceNum) {
+                return {
+                    isValid: false,
+                    error: `${params.type.toUpperCase()} limit_price (${limitPriceNum}) cannot be greater than stop_price (${stopPriceNum}) for a buy position (sell order)`
+                };
+            }
+        } else { // sell
+            if (limitPriceNum < stopPriceNum) {
+                return {
+                    isValid: false,
+                    error: `${params.type.toUpperCase()} limit_price (${limitPriceNum}) cannot be less than stop_price (${stopPriceNum}) for a sell position (buy order)`
+                };
+            }
+        }
+
+        // 3. Verify buffer amount matches configured buffer within a reasonable tolerance
+        try {
+            const config = TradingConfig.getConfig();
+            const triggerPct = params.type === "tp" ? config.TP_TRIGGER_BUFFER_PERCENT : config.SL_TRIGGER_BUFFER_PERCENT;
+            const limitPct = params.type === "tp" ? config.TP_LIMIT_BUFFER_PERCENT : config.SL_LIMIT_BUFFER_PERCENT;
+
+            // Unadjusted ratio
+            const factorTriggerUnadj = 1 - (params.positionSide === "buy" ? triggerPct : -triggerPct) / 100;
+            const factorLimitUnadj = 1 - (params.positionSide === "buy" ? limitPct : -limitPct) / 100;
+            const expectedRatioUnadj = factorTriggerUnadj !== 0 ? factorLimitUnadj / factorTriggerUnadj : 1;
+
+            // Adjusted ratio (with 0.01% minimum limit check)
+            const adjTriggerPct = Math.max(triggerPct, 0.01);
+            const adjLimitPct = Math.max(limitPct, 0.01);
+            const factorTriggerAdj = 1 - (params.positionSide === "buy" ? adjTriggerPct : -adjTriggerPct) / 100;
+            const factorLimitAdj = 1 - (params.positionSide === "buy" ? adjLimitPct : -adjLimitPct) / 100;
+            const expectedRatioAdj = factorTriggerAdj !== 0 ? factorLimitAdj / factorTriggerAdj : 1;
+
+            const actualRatio = limitPriceNum / stopPriceNum;
+
+            const diffUnadj = Math.abs(actualRatio - expectedRatioUnadj);
+            const diffAdj = Math.abs(actualRatio - expectedRatioAdj);
+
+            if (diffUnadj > 0.005 && diffAdj > 0.005) {
+                return {
+                    isValid: false,
+                    error: `${params.type.toUpperCase()} buffer ratio deviation too high. Expected ratio: ${expectedRatioUnadj.toFixed(6)} (or ${expectedRatioAdj.toFixed(6)}), Got: ${actualRatio.toFixed(6)}`
+                };
+            }
+        } catch {
+            // Skip config validation if config context is not set (e.g. during standalone tests)
+        }
+
+        return { isValid: true };
+    }
+
     static constructBracketOrderPayload(
         tp: number,
         sl: number,
         positionSide: OrderSide,
+        entryPrice?: number,
     ) {
         const c = TradingConfig.getConfig();
 
@@ -108,6 +225,37 @@ export class Utils {
         const tpTriggerPrice = tp;
         const tpLimitPrice = tpTriggerFactor !== 0 ? tp * (tpLimitFactor / tpTriggerFactor) : tp;
 
+        // Perform validations
+        if (tp) {
+            const tpStopClamped = String(this.clampPrice(tpTriggerPrice));
+            const tpLimitClamped = String(this.clampPrice(tpLimitPrice));
+            const validation = this.validateStopLimitPrice({
+                type: "tp",
+                positionSide,
+                stopPrice: tpStopClamped,
+                limitPrice: tpLimitClamped,
+                entryOrMarketPrice: entryPrice
+            });
+            if (!validation.isValid) {
+                throw new Error(`[constructBracketOrderPayload] TP validation failed: ${validation.error}`);
+            }
+        }
+
+        if (sl) {
+            const slStopClamped = String(this.clampPrice(slTriggerPrice));
+            const slLimitClamped = String(this.clampPrice(slLimitPrice));
+            const validation = this.validateStopLimitPrice({
+                type: "sl",
+                positionSide,
+                stopPrice: slStopClamped,
+                limitPrice: slLimitClamped,
+                entryOrMarketPrice: entryPrice
+            });
+            if (!validation.isValid) {
+                throw new Error(`[constructBracketOrderPayload] SL validation failed: ${validation.error}`);
+            }
+        }
+
         const payload = {
             product_id: Number(c.PRODUCT_ID),
             product_symbol: c.SYMBOL,
@@ -116,7 +264,7 @@ export class Utils {
             ...(tp && {
                 take_profit_order: {
                     order_type: "limit_order",
-                    stop_price: String(this.clampPrice(tpTriggerPrice)),
+                    stop_price: String(tpTriggerPrice),
                     limit_price: String(this.clampPrice(tpLimitPrice)),
                 },
             }),

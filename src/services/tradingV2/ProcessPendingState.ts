@@ -284,7 +284,7 @@ export class ProcessPendingState {
         }
 
         const bracketRes =
-            await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext);
+            await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext, entryPriceValue);
 
         if (!bracketRes.success) {
             if (bracketRes.isNoPosition) {
@@ -473,7 +473,8 @@ export class ProcessPendingState {
             throw new Error(`[Recovery] Invalid TP/SL during recovery: TP=${tp}, SL=${sl}`);
         }
 
-        const tpSlResult = await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext);
+        const entryPrice = Utils.resolveEntryPrice(e);
+        const tpSlResult = await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext, entryPrice);
 
         if (!tpSlResult.success || !tpSlResult.ids.tp || !tpSlResult.ids.sl) {
             throw new Error(`[Recovery] Failed to re-place TP/SL bracket orders during recovery. TP_ID=${tpSlResult.ids.tp}, SL_ID=${tpSlResult.ids.sl}`);

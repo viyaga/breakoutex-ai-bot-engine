@@ -82,7 +82,7 @@ export class OrderExecutor {
         const tpSlResult = await deltaExchange.placeTPSLBracketOrder(tp, sl, side, {
             cycleId,
             tradingBotId
-        });
+        }, entryPrice);
 
         if (!tpSlResult.success || !tpSlResult.ids.tp || !tpSlResult.ids.sl) {
             throw new Error(

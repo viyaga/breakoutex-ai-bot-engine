@@ -226,6 +226,19 @@ export class DeltaExchange {
 
         const stopPrice = String(Utils.clampPrice(slTriggerPrice));
         const limitPrice = String(Utils.clampPrice(slLimitPrice));
+
+        // Perform validation check
+        const validation = Utils.validateStopLimitPrice({
+            type: "sl",
+            positionSide: orderSide,
+            stopPrice,
+            limitPrice,
+            entryOrMarketPrice: marketPrice || undefined
+        });
+        if (!validation.isValid) {
+            throw new Error(`[updateStopLossOrder] Validation failed: ${validation.error}`);
+        }
+
         const newSlTrigger = Number(stopPrice);
         const oldSlTrigger = Number(slPrice);
 
@@ -312,6 +325,30 @@ export class DeltaExchange {
 
         const stopPrice = String(Utils.clampPrice(tpTriggerPrice));
         const limitPrice = String(Utils.clampPrice(tpLimitPriceVal));
+
+        // Get market price for validation if needed
+        let marketPrice: number | undefined;
+        try {
+            const ticker = await this.getTickerData(productSymbol);
+            marketPrice = Number(
+                ticker?.mark_price ?? ticker?.spot_price ?? ticker?.best_bid ?? ticker?.best_ask ?? 0
+            );
+        } catch {
+            // ignore
+        }
+
+        // Perform validation check
+        const validation = Utils.validateStopLimitPrice({
+            type: "tp",
+            positionSide: orderSide,
+            stopPrice,
+            limitPrice,
+            entryOrMarketPrice: marketPrice || undefined
+        });
+        if (!validation.isValid) {
+            throw new Error(`[updateTakeProfitOrder] Validation failed: ${validation.error}`);
+        }
+
         const oldTpTrigger = String(Utils.clampPrice(tpPrice));
 
         logger.debug("TP price calculation", { stopPrice, limitPrice, oldTpTrigger, tp, tpPrice });
@@ -389,8 +426,29 @@ export class DeltaExchange {
         return (await this.signedRequest("GET", "/positions", undefined, pid ? new URLSearchParams({ product_id: String(pid) }) : undefined))?.result ?? null;
     }
 
-    async placeTPSLBracketOrder(tp: number, sl: number, positionSide: OrderSide, logContext?: any): Promise<{ success: boolean; ids: { tp: string; sl: string }; isNoPosition?: boolean }> {
-        const payload = Utils.constructBracketOrderPayload(tp, sl, positionSide);
+    async placeTPSLBracketOrder(
+        tp: number,
+        sl: number,
+        positionSide: OrderSide,
+        logContext?: any,
+        entryPrice?: number
+    ): Promise<{ success: boolean; ids: { tp: string; sl: string }; isNoPosition?: boolean }> {
+        let resolvedEntryPrice = entryPrice;
+        if (!resolvedEntryPrice) {
+            try {
+                const pos = await this.getPositions(TradingConfig.getConfig().PRODUCT_ID);
+                if (pos) {
+                    const position = Array.isArray(pos) ? pos[0] : pos;
+                    if (position?.entry_price) {
+                        resolvedEntryPrice = Number(position.entry_price);
+                    }
+                }
+            } catch (err) {
+                // If it fails to fetch positions, we still proceed without entryPrice check
+            }
+        }
+
+        const payload = Utils.constructBracketOrderPayload(tp, sl, positionSide, resolvedEntryPrice);
         const logger = getContextualLogger(tradingCronLogger, logContext);
         if (!payload.stop_loss_order && !payload.take_profit_order) return { success: false, ids: { tp: "", sl: "" } };
 
