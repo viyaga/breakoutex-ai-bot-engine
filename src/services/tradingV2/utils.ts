@@ -219,21 +219,19 @@ export class Utils {
         const tpTriggerFactor = 1 - (positionSide === "buy" ? c.TP_TRIGGER_BUFFER_PERCENT : -c.TP_TRIGGER_BUFFER_PERCENT) / 100;
         const tpLimitFactor = 1 - (positionSide === "buy" ? c.TP_LIMIT_BUFFER_PERCENT : -c.TP_LIMIT_BUFFER_PERCENT) / 100;
 
-        const slTriggerPrice = sl;
-        const slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
+        const slTriggerPrice = this.clampPrice(sl);
+        const slLimitPrice = this.clampPrice(triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl);
 
-        const tpTriggerPrice = tp;
-        const tpLimitPrice = tpTriggerFactor !== 0 ? tp * (tpLimitFactor / tpTriggerFactor) : tp;
+        const tpTriggerPrice = this.clampPrice(tp);
+        const tpLimitPrice = this.clampPrice(tpTriggerFactor !== 0 ? tp * (tpLimitFactor / tpTriggerFactor) : tp);
 
         // Perform validations
         if (tp) {
-            const tpStopClamped = String(this.clampPrice(tpTriggerPrice));
-            const tpLimitClamped = String(this.clampPrice(tpLimitPrice));
             const validation = this.validateStopLimitPrice({
                 type: "tp",
                 positionSide,
-                stopPrice: tpStopClamped,
-                limitPrice: tpLimitClamped,
+                stopPrice: tpTriggerPrice,
+                limitPrice: tpLimitPrice,
                 entryOrMarketPrice: entryPrice
             });
             if (!validation.isValid) {
@@ -242,13 +240,11 @@ export class Utils {
         }
 
         if (sl) {
-            const slStopClamped = String(this.clampPrice(slTriggerPrice));
-            const slLimitClamped = String(this.clampPrice(slLimitPrice));
             const validation = this.validateStopLimitPrice({
                 type: "sl",
                 positionSide,
-                stopPrice: slStopClamped,
-                limitPrice: slLimitClamped,
+                stopPrice: slTriggerPrice,
+                limitPrice: slLimitPrice,
                 entryOrMarketPrice: entryPrice
             });
             if (!validation.isValid) {
@@ -265,15 +261,15 @@ export class Utils {
                 take_profit_order: {
                     order_type: "limit_order",
                     stop_price: String(tpTriggerPrice),
-                    limit_price: String(this.clampPrice(tpLimitPrice)),
+                    limit_price: String(tpLimitPrice),
                 },
             }),
 
             ...(sl && {
                 stop_loss_order: {
                     order_type: "limit_order",
-                    stop_price: String(this.clampPrice(slTriggerPrice)),                 // trigger
-                    limit_price: String(this.clampPrice(slLimitPrice)),     // buffered
+                    stop_price: String(slTriggerPrice),                 // trigger
+                    limit_price: String(slLimitPrice),     // buffered
                 },
             }),
         };
