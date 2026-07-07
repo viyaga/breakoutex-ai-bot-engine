@@ -235,7 +235,9 @@ export class Utils {
                 entryOrMarketPrice: entryPrice
             });
             if (!validation.isValid) {
-                throw new Error(`[constructBracketOrderPayload] TP validation failed: ${validation.error}`);
+                const errMsg = `[constructBracketOrderPayload] TP validation failed: ${validation.error}`;
+                skipTradingLogger.error(errMsg);
+                throw new Error(errMsg);
             }
         }
 
@@ -248,7 +250,9 @@ export class Utils {
                 entryOrMarketPrice: entryPrice
             });
             if (!validation.isValid) {
-                throw new Error(`[constructBracketOrderPayload] SL validation failed: ${validation.error}`);
+                const errMsg = `[constructBracketOrderPayload] SL validation failed: ${validation.error}`;
+                skipTradingLogger.error(errMsg);
+                throw new Error(errMsg);
             }
         }
 

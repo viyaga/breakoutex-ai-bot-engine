@@ -236,7 +236,11 @@ export class DeltaExchange {
             entryOrMarketPrice: marketPrice || undefined
         });
         if (!validation.isValid) {
-            throw new Error(`[updateStopLossOrder] Validation failed: ${validation.error}`);
+            const errMsg = `[updateStopLossOrder] Validation failed: ${validation.error}`;
+            logger.error(errMsg);
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.error(errMsg);
+            throw new Error(errMsg);
         }
 
         const newSlTrigger = Number(stopPrice);
@@ -346,7 +350,11 @@ export class DeltaExchange {
             entryOrMarketPrice: marketPrice || undefined
         });
         if (!validation.isValid) {
-            throw new Error(`[updateTakeProfitOrder] Validation failed: ${validation.error}`);
+            const errMsg = `[updateTakeProfitOrder] Validation failed: ${validation.error}`;
+            logger.error(errMsg);
+            const plLogger = getContextualLogger(placedOrdersLogger, logContext);
+            plLogger.error(errMsg);
+            throw new Error(errMsg);
         }
 
         const oldTpTrigger = String(Utils.clampPrice(tpPrice));
