@@ -126,7 +126,11 @@ export class TradingV2 {
 
             const side: OrderSide = sideRaw;
 
-            if (
+            if (c.IS_TESTING) {
+                loggers.cronLogger.info(
+                    `[TESTING] Bypassing PriceTrend check for ${symbol} (IS_TESTING=true)`
+                );
+            } else if (
                 !(await Utils.isPriceMovingInOrderSideDirection(
                     targetCandle,
                     side,
