@@ -21,9 +21,9 @@ export class TradingConfig {
     static readonly defaultConfig: Partial<ConfigType> = {
         BASE_URL: "https://api.india.delta.exchange/v2",
         RUN_MINUTES: [0, 15, 30, 45],
-        TIMEFRAME: "1m",
-        CONFIRMATION_TIMEFRAME: "5m",
-        STRUCTURE_TIMEFRAME: "15m",
+        TIMEFRAME: "5m",
+        CONFIRMATION_TIMEFRAME: "15m",
+        STRUCTURE_TIMEFRAME: "1h",
         SL_TRIGGER_BUFFER_PERCENT: 0.2,
         SL_LIMIT_BUFFER_PERCENT: 0.3,
         TP_TRIGGER_BUFFER_PERCENT: 0.2,

@@ -192,7 +192,7 @@ export class DeltaExchange {
             1 - (orderSide === "buy" ? limitBufferPct : -limitBufferPct) / 100;
 
         let slTriggerPrice = sl; 
-        const slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
+        let slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
 
         if (marketPrice) {
             if (
@@ -221,6 +221,7 @@ export class DeltaExchange {
                 );
 
                 slTriggerPrice = adjustedStop;
+                slLimitPrice = triggerFactor !== 0 ? adjustedStop * (limitFactor / triggerFactor) : adjustedStop;
             }
         }
 

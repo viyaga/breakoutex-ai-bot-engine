@@ -362,22 +362,22 @@ export class ProcessPendingState {
             const slOrder = s.stopLossOrderId ? await deltaExchange.getOrderDetails(s.stopLossOrderId) : null;
             const tpOrder = s.takeProfitOrderId ? await deltaExchange.getOrderDetails(s.takeProfitOrderId) : null;
 
-            // 🔥 Recovery: If slPrice or tpPrice is missing in state, try to recover from active orders
-            if (slOrder && !slPrice) {
+            // 🔥 Recovery & Sync: Ensure DB state matches the actual active order prices on the exchange
+            if (slOrder) {
                 const stopPriceVal = slOrder.stop_price ? Number(slOrder.stop_price) : (slOrder.limit_price ? Number(slOrder.limit_price) : 0);
-                if (stopPriceVal) {
+                if (stopPriceVal && slPrice !== stopPriceVal) {
+                    logger.info(`[Recovery/Sync] Syncing slPrice for ${sym} to actual exchange order price: ${stopPriceVal} (was ${slPrice})`);
                     slPrice = stopPriceVal;
-                    logger.info(`[Recovery] Recovered missing slPrice for ${sym} from order details: ${slPrice}`);
                     await TradeState.findByIdAndUpdate(s.id || (s as any)._id, { $set: { slPrice } });
                     s.slPrice = slPrice;
                 }
             }
 
-            if (tpOrder && !tpPrice) {
+            if (tpOrder) {
                 const limitPriceVal = tpOrder.limit_price ? Number(tpOrder.limit_price) : (tpOrder.stop_price ? Number(tpOrder.stop_price) : 0);
-                if (limitPriceVal) {
+                if (limitPriceVal && tpPrice !== limitPriceVal) {
+                    logger.info(`[Recovery/Sync] Syncing tpPrice for ${sym} to actual exchange order price: ${limitPriceVal} (was ${tpPrice})`);
                     tpPrice = limitPriceVal;
-                    logger.info(`[Recovery] Recovered missing tpPrice for ${sym} from order details: ${tpPrice}`);
                     await TradeState.findByIdAndUpdate(s.id || (s as any)._id, { $set: { tpPrice } });
                     s.tpPrice = tpPrice;
                 }
@@ -552,10 +552,10 @@ export class ProcessPendingState {
             const entryPrice = Number(e.average_fill_price || e.limit_price || 0);
             const tradeAmountInUse = (Number(s.quantity || 0) * cfg.LOT_SIZE * entryPrice) / cfg.LEVERAGE;
 
-            const tpPrice = s.tpPrice || mtf.tp;
-            const slPrice = s.slPrice || mtf.sl;
+            const tpPrice = s.tpPrice || null;
+            const slPrice = s.slPrice || null;
 
-            const metrics = this.calculateMetrics(entryPrice, tpPrice!, slPrice!, cfg.LEVERAGE);
+            const metrics = this.calculateMetrics(entryPrice, s.tpPrice || mtf.tp, s.slPrice || mtf.sl, cfg.LEVERAGE);
 
             const updateData: any = {
                 side: e.side,
@@ -567,18 +567,19 @@ export class ProcessPendingState {
                 confirmationProbability: mtf.confirmationProbability,
                 structureProbability: mtf.structureProbability,
                 tradingMode: cfg.TRADING_MODE,
-                tpPrice,
-                slPrice,
                 ...metrics
             };
+
+            if (tpPrice !== null) updateData.tpPrice = tpPrice;
+            if (slPrice !== null) updateData.slPrice = slPrice;
 
             // Optimization: Only update if anything meaningful changed
             const isUnchanged =
                 s.entryPrice === entryPrice &&
                 s.tradeAmountInUse === tradeAmountInUse &&
                 s.finalScore === mtf.finalScore &&
-                s.tpPrice === tpPrice &&
-                s.slPrice === slPrice;
+                s.tpPrice === (s.tpPrice || mtf.tp) &&
+                s.slPrice === (s.slPrice || mtf.sl);
 
             if (isUnchanged && (s.stopLossOrderId && s.takeProfitOrderId)) {
                 cronLogger.info(`[PendingState] Core state unchanged for ${sym}, proceeding to manage open position (trailing).`);
