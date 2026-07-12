@@ -278,9 +278,32 @@ export class ProcessPendingState {
             throw new Error("Entry price not found");
         }
 
-        const tp = state.tpPrice;
+        let tp = state.tpPrice;
         if (!tp) {
-            throw new Error("[placeCancelledBracketOrders] TP price not found in state");
+            const c = TradingConfig.getConfig();
+            const tpPercent = c.TP_PRICE_MOVEMENT_PERCENT;
+            const side = e.side || state.side || "buy";
+            const isBuy = side.toLowerCase() === "buy";
+
+            let baseTp: number;
+            if (isBuy) {
+                baseTp = entryPriceValue * (1 + tpPercent / 100);
+            } else {
+                baseTp = entryPriceValue * (1 - tpPercent / 100);
+            }
+
+            const tpTriggerFactor = 1 - (isBuy ? c.TP_TRIGGER_BUFFER_PERCENT : -c.TP_TRIGGER_BUFFER_PERCENT) / 100;
+            tp = baseTp * tpTriggerFactor;
+
+            if (tp <= 0) {
+                tp = parseFloat((1 / Math.pow(10, c.PRICE_DECIMAL_PLACES)).toFixed(c.PRICE_DECIMAL_PLACES));
+            } else {
+                tp = parseFloat(tp.toFixed(c.PRICE_DECIMAL_PLACES));
+            }
+
+            getContextualLogger(tradesLogger, logContext).warn(
+                `[placeCancelledBracketOrders] TP price was missing in state. Recalculated fallback TP: ${tp} using entryPrice: ${entryPriceValue}, side: ${side}`
+            );
         }
 
         const bracketRes =
