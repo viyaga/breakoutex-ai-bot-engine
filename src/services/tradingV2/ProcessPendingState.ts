@@ -168,17 +168,16 @@ export class ProcessPendingState {
     }
 
     /* =========================================================================
-   PENDING ORDER HANDLING
-========================================================================= */
+        PENDING ORDER HANDLING
+    ========================================================================= */
 
     private static async handleCanceledEntryOrder(s: ITradeState): Promise<ITradeState> {
-
         return this.markCancelled(s);
     }
 
     /* =========================================================================
-   CLOSED POSITION OUTCOME
-========================================================================= */
+        CLOSED POSITION OUTCOME
+    ========================================================================= */
 
     static async processClosedPosition(
         s: ITradeState,
@@ -192,15 +191,23 @@ export class ProcessPendingState {
         if (!s.stopLossOrderId || !s.takeProfitOrderId) {
             logger.warn(`[PositionOutcome] Missing TP/SL order IDs for ${s.symbol} in state. Entry was CLOSED but bracket orders are unknown. Recovering status while PRESERVING trade metrics (Level, PnL, Fees).`);
 
-            return {
-                ...s,
-                entryOrderId: null,
-                stopLossOrderId: null,
-                takeProfitOrderId: null,
-                tradeOutcome: "none",
-                cumulativeFees: s.cumulativeFees + entryCommission,
-                allTimeFees: (s.allTimeFees || 0) + entryCommission,
-            };
+            const updated = await TradeState.findByIdAndUpdate(
+                s.id || (s as any)._id,
+                {
+                    $set: {
+                        entryOrderId: null,
+                        stopLossOrderId: null,
+                        takeProfitOrderId: null,
+                        tradeOutcome: "none",
+                        cumulativeFees: s.cumulativeFees + entryCommission,
+                        allTimeFees: (s.allTimeFees || 0) + entryCommission,
+                    }
+                },
+                { new: true }
+            );
+
+            if (!updated) throw new Error("Failed to update trade state when bracket orders are missing");
+            return updated as ITradeState;
         }
 
         const tp = await deltaExchange.getOrderDetails(s.takeProfitOrderId);
@@ -324,6 +331,7 @@ export class ProcessPendingState {
                 tradingBotId: state.tradingBotId,
                 userId: state.userId,
                 symbol: state.symbol,
+                status: "open",
             },
             {
                 $set: {
@@ -504,7 +512,7 @@ export class ProcessPendingState {
         }
 
         const updated = await TradeState.findOneAndUpdate(
-            { tradingBotId: s.tradingBotId, userId: s.userId, symbol: s.symbol },
+            { tradingBotId: s.tradingBotId, userId: s.userId, symbol: s.symbol, status: "open" },
             {
                 $set: {
                     stopLossOrderId: tpSlResult.ids.sl,
