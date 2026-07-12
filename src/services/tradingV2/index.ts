@@ -105,7 +105,12 @@ export class TradingV2 {
                     c,
                     loggers.cronLogger
                 );
-                if (Utils.isTradePending(state)) return;
+                if (Utils.isTradePending(state)) {
+                    loggers.cronLogger.info(
+                        `[PositionManager] Position is active. Managing existing position. No new entries allowed.`
+                    );
+                    return;
+                }
             }
 
             // ───────────────── SAFETY VALIDATION (DAILY LOSS, WEEKEND, RUN MINUTES) ─────────────────

@@ -6,6 +6,7 @@ import { Data } from "../services/tradingV2/data";
 import { TradingConfig } from "../services/tradingV2/config";
 import { tradingCronLogger } from "../services/tradingV2/logger";
 import { BulkSyncService } from "../services/bulkSync.service";
+import { startCycleLogging, endCycleLogging } from "../utils/cycleLogger";
 
 /* ============================================================================
  * Cron Scheduler
@@ -14,6 +15,7 @@ import { BulkSyncService } from "../services/bulkSync.service";
 const tradingCycleCronJob = (): void => {
 
     cron.schedule(env.cronSchedule, async () => {
+        startCycleLogging();
         const startTime = Date.now();
         let totalProcessed = 0;
         let totalSucceeded = 0;
@@ -117,6 +119,7 @@ const tradingCycleCronJob = (): void => {
             await BulkSyncService.runFullSync();
             
             tradingCronLogger.info(`${'='.repeat(80)}`);
+            endCycleLogging();
         }
     });
 
