@@ -1,5 +1,5 @@
 import { marketDetectorLogger } from "../logger";
-import { Candle, ConfigType, TargetCandle } from "../type";
+import { Candle, ConfigType, TargetCandle, OrderSide } from "../type";
 import { MarketDetector } from "./market-detector";
 import { evaluateBreakoutTrade } from "./master-breakout-system";
 import { calculateATR } from "./indicators"; // 🔥 NEW
@@ -38,7 +38,8 @@ export class MultiTimeframeAlignment {
         confirmationConfig: ConfigType,
         structureConfig: ConfigType,
         currentPriceParam?: number,
-        logContext?: any
+        logContext?: any,
+        positionSideOverride?: OrderSide
     ): TripleTFResult {
 
         // 🔥 Use current price if provided, otherwise fallback to candle close (Hybrid/Real-time MTF Evaluation)
@@ -64,7 +65,9 @@ export class MultiTimeframeAlignment {
         const structureProbability = structureResult.probability;
 
         const breakout = evaluateBreakoutTrade(entryCandles, entryTarget, entryConfig);
-        let direction = breakout.direction;
+        let direction = positionSideOverride
+            ? (positionSideOverride.toUpperCase() as "BUY" | "SELL")
+            : breakout.direction;
         const entryScore = breakout.score;
 
         // Evaluate breakout trade on confirmation timeframe
@@ -99,6 +102,7 @@ export class MultiTimeframeAlignment {
 
         // Direct conflict check: If confirmation timeframe has a breakout in opposite direction
         const hasConfBreakoutMismatch =
+            !positionSideOverride &&
             !entryConfig.IS_TESTING &&
             direction !== "NONE" &&
             confirmationBreakout.direction !== "NONE" &&
@@ -206,7 +210,104 @@ export class MultiTimeframeAlignment {
         }
 
         /* ================= 🔥 DYNAMIC TP/SL ================= */
+        const levels = this.calculateSlTpLevels(
+            direction,
+            entryPrice,
+            structureTarget,
+            confirmationTarget,
+            entryConfig
+        );
 
+        const {
+            tp,
+            sl,
+            rr,
+            tpPerc,
+            slPerc,
+            slLimit,
+            tpLimit,
+            isSlAlreadyCrossed,
+            crossedReason,
+            isExceededMovementLimit,
+            structSlPerc,
+            confSlPerc
+        } = levels;
+
+        /* ================= FINAL PERMISSION ================= */
+        // If we are overriding the side for an already open trade, bypass entry-based safety checks.
+        let isAllowed = positionSideOverride
+            ? tp > 0 && sl > 0
+            : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed;
+
+        /* ================= LOG ================= */
+
+        const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
+        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | SL Limit: ${slLimit} | RR: ${rr.toFixed(2)}`);
+
+        if (isAllowed) {
+            marketDetectorLogger.debug(`[MarketProbability] ${symbol} Confirmation`, {
+                probability: confirmationResult.probability,
+                isAllowed: confirmationResult.isAllowed,
+                mode: confirmationResult.mode,
+                details: confirmationResult.details,
+            });
+
+            marketDetectorLogger.debug(`[MarketProbability] ${symbol} Structure`, {
+                probability: structureResult.probability,
+                isAllowed: structureResult.isAllowed,
+                mode: structureResult.mode,
+                details: structureResult.details,
+            });
+        } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
+        } else if (isSlAlreadyCrossed) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss boundary already crossed before entry: ${crossedReason}`);
+        } else if (isExceededMovementLimit) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
+        }
+
+        return {
+            entryScore,
+            confirmationProbability,
+            structureProbability,
+            finalScore,
+            decision,
+            isAllowed,
+            direction,
+            tp,
+            sl,
+            rr,
+            tpPerc,
+            slPerc,
+            slLimit,
+            tpLimit,
+        };
+    }
+
+    /**
+     * Calculates dynamic Stop Loss and Take Profit levels, along with risk metrics and bounds.
+     * Structured as a separate helper for readability, maintainability, and testing.
+     */
+    private static calculateSlTpLevels(
+        direction: "BUY" | "SELL",
+        entryPrice: number,
+        structureTarget: TargetCandle,
+        confirmationTarget: TargetCandle,
+        entryConfig: ConfigType
+    ): {
+        sl: number;
+        tp: number;
+        rr: number;
+        tpPerc: number;
+        slPerc: number;
+        slLimit: number;
+        tpLimit: number;
+        isSlAlreadyCrossed: boolean;
+        crossedReason: string;
+        isExceededMovementLimit: boolean;
+        structSlPerc: number;
+        confSlPerc: number;
+    } {
         let tp = 0;
         let sl = 0;
         let rr = 0;
@@ -299,7 +400,6 @@ export class MultiTimeframeAlignment {
                 tpLimit = parseFloat(rawTpLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             }
 
-            const rawRisk = Math.abs(entryPrice - sl);
             const riskPriceDist = Math.abs(entryPrice - slLimit);
             const rewardPriceDist = Math.abs(tpLimit - entryPrice);
 
@@ -316,56 +416,21 @@ export class MultiTimeframeAlignment {
 
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
-
-            marketDetectorLogger.info(`[MTF] Structural TP/SL for ${symbol}: Entry/CurrentPrice=${entryPrice}, TP Trigger=${tp}, TP Limit=${tpLimit} (${tpPerc.toFixed(2)}%), SL Trigger=${sl}, SL Limit=${slLimit} (${slPerc.toFixed(2)}%), Net RR=${rr.toFixed(2)} (Fees incl.)`);
-        }
-
-        /* ================= FINAL PERMISSION ================= */
-
-        let isAllowed = isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed;
-
-        /* ================= LOG ================= */
-
-        const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
-        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | SL Limit: ${slLimit} | RR: ${rr.toFixed(2)}`);
-
-        if (isAllowed) {
-            marketDetectorLogger.debug(`[MarketProbability] ${symbol} Confirmation`, {
-                probability: confirmationResult.probability,
-                isAllowed: confirmationResult.isAllowed,
-                mode: confirmationResult.mode,
-                details: confirmationResult.details,
-            });
-
-            marketDetectorLogger.debug(`[MarketProbability] ${symbol} Structure`, {
-                probability: structureResult.probability,
-                isAllowed: structureResult.isAllowed,
-                mode: structureResult.mode,
-                details: structureResult.details,
-            });
-        } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
-        } else if (isSlAlreadyCrossed) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss boundary already crossed before entry: ${crossedReason}`);
-        } else if (isExceededMovementLimit) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
         }
 
         return {
-            entryScore,
-            confirmationProbability,
-            structureProbability,
-            finalScore,
-            decision,
-            isAllowed,
-            direction,
-            tp,
             sl,
+            tp,
             rr,
             tpPerc,
             slPerc,
             slLimit,
             tpLimit,
+            isSlAlreadyCrossed,
+            crossedReason,
+            isExceededMovementLimit,
+            structSlPerc,
+            confSlPerc
         };
     }
 }

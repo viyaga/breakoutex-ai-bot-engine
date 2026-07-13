@@ -103,7 +103,8 @@ export class TradingV2 {
                     cycleId,
                     tradingBotId,
                     c,
-                    loggers.cronLogger
+                    loggers.cronLogger,
+                    marketData
                 );
                 if (Utils.isTradePending(state)) {
                     loggers.cronLogger.info(
@@ -188,7 +189,13 @@ export class TradingV2 {
         };
     }
 
-    private static evaluateMtf(marketData: FetchedMarketData, c: ConfigType, cycleId: string, tradingBotId: string) {
+    private static evaluateMtf(
+        marketData: FetchedMarketData,
+        c: ConfigType,
+        cycleId: string,
+        tradingBotId: string,
+        positionSideOverride?: OrderSide
+    ) {
         const configConfirmation: ConfigType = { ...c, TIMEFRAME: c.CONFIRMATION_TIMEFRAME };
         const configStructure: ConfigType = { ...c, TIMEFRAME: c.STRUCTURE_TIMEFRAME };
 
@@ -203,7 +210,8 @@ export class TradingV2 {
             configConfirmation,
             configStructure,
             marketData.currentPrice,
-            { cycleId, tradingBotId }
+            { cycleId, tradingBotId },
+            positionSideOverride
         );
     }
 
@@ -268,7 +276,8 @@ export class TradingV2 {
         cycleId: string,
         tradingBotId: string,
         c: ConfigType,
-        cronLogger: any
+        cronLogger: any,
+        marketData: FetchedMarketData
     ): Promise<any> {
         cronLogger.info(
             `Found pending trade with order ID: ${state.entryOrderId}. Fetching order details...`
@@ -282,6 +291,13 @@ export class TradingV2 {
 
         cronLogger.info(`Order details retrieved: Status=${orderDetails.status}`);
 
+        let activeMtf = mtf;
+        if (orderDetails.status === "CLOSED") {
+            const positionSide = orderDetails.side; // "buy" or "sell"
+            cronLogger.info(`[PositionManager] Position is active (${positionSide.toUpperCase()}). Re-evaluating MTF Stop Loss for position side.`);
+            activeMtf = this.evaluateMtf(marketData, c, cycleId, tradingBotId, positionSide);
+        }
+
         cronLogger.info(
             `Processing pending trade state with multiplier: ${scoreMultiplier}`
         );
@@ -290,7 +306,7 @@ export class TradingV2 {
             symbol,
             state,
             orderDetails,
-            mtf,
+            activeMtf,
             currentPrice,
             scoreMultiplier,
             { cycleId, tradingBotId } // Pass context for logging
