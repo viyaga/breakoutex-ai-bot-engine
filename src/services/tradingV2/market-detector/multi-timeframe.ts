@@ -241,7 +241,9 @@ export class MultiTimeframeAlignment {
         const minRr = entryConfig.MIN_RR ?? 1.0;
         let isAllowed = positionSideOverride
             ? tp > 0 && sl > 0
-            : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && rr >= minRr;
+            : entryConfig.IS_TESTING
+                ? tp > 0 && sl > 0
+                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && rr >= minRr;
 
         /* ================= LOG ================= */
 
@@ -405,10 +407,12 @@ export class MultiTimeframeAlignment {
             const scoreFactor = Math.max(50, Math.min(100, finalScore));
             const multiplier = 1.0 + ((scoreFactor - 50) / 50) * 1.0;
 
-            let tpPercent = atrPercent * multiplier;
+            const rawTpPercent = atrPercent * multiplier;
 
             // Clamp tpPercent between config bounds
-            tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, tpPercent));
+            const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
+
+            marketDetectorLogger.info(`[DynamicTP] ${entryConfig.SYMBOL} Volatility Analysis: ATR%=${atrPercent.toFixed(4)}% (Timeframe: ${sourceCandles === structureCandles ? 'Structure' : 'Confirmation'}) | Score=${finalScore} | Multiplier=${multiplier.toFixed(2)}x | Raw TP%=${rawTpPercent.toFixed(4)}% | Config Limits=[${minTpPerc.toFixed(2)}%, ${maxTpPerc.toFixed(2)}%] | Final TP%=${tpPercent.toFixed(4)}%`);
 
             let baseTp: number;
             if (direction === "BUY") {

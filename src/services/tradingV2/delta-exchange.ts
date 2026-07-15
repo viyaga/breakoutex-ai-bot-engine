@@ -283,7 +283,7 @@ export class DeltaExchange {
                 const plLogger = getContextualLogger(placedOrdersLogger, logContext);
                 plLogger.info(`[SL_UPDATE] Symbol: ${productSymbol} | Order ID: ${order.id || id} | SL Trigger (Stop Price): ${order.stop_price} | SL Limit: ${order.limit_price}`);
             }
-            return { success: updateRes?.success ?? false, slPrice: sl };
+            return { success: updateRes?.success ?? false, slPrice: Number(stopPrice) };
         } catch (error: any) {
             const errMsg = error?.message || String(error);
             const errLower = errMsg.toLowerCase();
@@ -388,7 +388,7 @@ export class DeltaExchange {
                 const plLogger = getContextualLogger(placedOrdersLogger, logContext);
                 plLogger.info(`[TP_UPDATE] Symbol: ${productSymbol} | Order ID: ${order.id || id} | TP Trigger (Stop Price): ${order.stop_price} | TP Limit: ${order.limit_price}`);
             }
-            return { success: updateRes?.success ?? false, tpPrice: tp };
+            return { success: updateRes?.success ?? false, tpPrice: Number(stopPrice) };
         } catch (error: any) {
             const errMsg = error?.message || String(error);
             const errLower = errMsg.toLowerCase();

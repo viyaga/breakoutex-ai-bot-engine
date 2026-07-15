@@ -392,6 +392,8 @@ export class ProcessPendingState {
             let slPrice = s.slPrice;
             let tpPrice = s.tpPrice;
 
+            logger.info(`[PriceTrailing] Managing open position for ${sym} | State SL: ${slPrice}, State TP: ${tpPrice} | Target SL: ${mtf.sl}, Target TP: ${mtf.tp}`);
+
             // 🔍 Query TP and SL order details to check if either was manually cancelled
             const slOrder = s.stopLossOrderId ? await deltaExchange.getOrderDetails(s.stopLossOrderId) : null;
             const tpOrder = s.takeProfitOrderId ? await deltaExchange.getOrderDetails(s.takeProfitOrderId) : null;
@@ -469,11 +471,19 @@ export class ProcessPendingState {
                 return s;
             }
 
-            if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === tpPrice) return s;
-            if (!updateRes.success && updateRes.isSlReversed) return s;
+            if (!updateRes.success && updateRes.isSlSame && tpUpdatedValue === tpPrice) {
+                logger.info(`[PriceTrailing] SL and TP unchanged for ${sym}. Skipping update.`);
+                return s;
+            }
+            if (!updateRes.success && updateRes.isSlReversed) {
+                logger.info(`[PriceTrailing] SL update skipped for ${sym} (new SL would move in reverse/wrong direction).`);
+                return s;
+            }
 
-            if (!updateRes.success && !updateRes.isSlSame && !updateRes.isSlReversed)
+            if (!updateRes.success && !updateRes.isSlSame && !updateRes.isSlReversed) {
+                logger.warn(`[PriceTrailing] SL update failed for ${sym} (not same/reversed). Re-placing bracket orders...`);
                 return this.placeCancelledBracketOrders(s, e, sl, logContext);
+            }
 
             const updated = await this.updateStatePrices(s, updateRes.slPrice, tpUpdatedValue || tpPrice || 0);
 
