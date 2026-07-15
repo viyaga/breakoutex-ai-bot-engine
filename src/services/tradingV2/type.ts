@@ -28,13 +28,11 @@ export interface ConfigType {
     TP_TRIGGER_BUFFER_PERCENT: number;
     TP_LIMIT_BUFFER_PERCENT: number;
     MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: number;
-    TP_PRICE_MOVEMENT_PERCENT: number;
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     LOOKBACK?: number;
     CONFIRMATION_LOOKBACK?: number;
     MIN_RR?: number;
-    TARGET_RR?: number;
     MIN_TP_PRICE_MOVEMENT_PERCENT?: number;
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number;
     ESTIMATED_FEE_PERCENT: number;
@@ -296,7 +294,6 @@ export interface ActiveSubscribedBot {
     MAX_TRADE_SIZE: number
     TRADING_MODE: "conservative" | "balanced" | "aggressive" | "meme"
     MIN_RR?: number
-    TARGET_RR?: number
     MIN_TP_PRICE_MOVEMENT_PERCENT?: number
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number
     MIN_FINAL_SCORE?: number
@@ -304,5 +301,4 @@ export interface ActiveSubscribedBot {
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number
     IS_WEEKEND_SAFETY_ENABLED?: boolean
-    TP_PRICE_MOVEMENT_PERCENT: number
 }

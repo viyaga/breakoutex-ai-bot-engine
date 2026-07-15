@@ -2,7 +2,7 @@ import { marketDetectorLogger } from "../logger";
 import { Candle, ConfigType, TargetCandle, OrderSide } from "../type";
 import { MarketDetector } from "./market-detector";
 import { evaluateBreakoutTrade } from "./master-breakout-system";
-import { calculateATR } from "./indicators"; // 🔥 NEW
+import { getRollingATRPercentAvg } from "./indicators";
 import { Utils } from "../utils";
 
 export type TradeDecision = "STRONG_TRADE" | "GOOD_TRADE" | "WEAK_TRADE" | "SKIP";
@@ -215,7 +215,10 @@ export class MultiTimeframeAlignment {
             entryPrice,
             structureTarget,
             confirmationTarget,
-            entryConfig
+            entryConfig,
+            confirmationCandles,
+            structureCandles,
+            finalScore
         );
 
         const {
@@ -296,7 +299,10 @@ export class MultiTimeframeAlignment {
         entryPrice: number,
         structureTarget: TargetCandle,
         confirmationTarget: TargetCandle,
-        entryConfig: ConfigType
+        entryConfig: ConfigType,
+        confirmationCandles: Candle[],
+        structureCandles: Candle[],
+        finalScore: number
     ): {
         sl: number;
         tp: number;
@@ -335,9 +341,11 @@ export class MultiTimeframeAlignment {
 
             const maxLimit = entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT;
             let sourceCandle = confirmationTarget;
+            let sourceCandles = confirmationCandles;
 
             if (structSlPerc <= maxLimit) {
                 sourceCandle = structureTarget;
+                sourceCandles = structureCandles;
             } else {
                 if (confSlPerc > maxLimit) {
                     isExceededMovementLimit = true;
@@ -385,24 +393,19 @@ export class MultiTimeframeAlignment {
             const netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
             /* ================= DYNAMIC TP ================= */
-            const targetRr = entryConfig.TARGET_RR ?? 1.5;
             const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.7;
             const maxTpPerc = entryConfig.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
 
-            let tpPercent = maxTpPerc;
-            if (netRisk > 0) {
-                if (direction === "BUY") {
-                    const targetNetReward = targetRr * netRisk;
-                    const tpLimitNeeded = (targetNetReward + entryPrice + entryFee) / (1 - feePercent / 2);
-                    const baseTpNeeded = tpLimitNeeded / (1 - entryConfig.TP_LIMIT_BUFFER_PERCENT / 100);
-                    tpPercent = ((baseTpNeeded / entryPrice) - 1) * 100;
-                } else {
-                    const targetNetReward = targetRr * netRisk;
-                    const tpLimitNeeded = (entryPrice - entryFee - targetNetReward) / (1 + feePercent / 2);
-                    const baseTpNeeded = tpLimitNeeded / (1 + entryConfig.TP_LIMIT_BUFFER_PERCENT / 100);
-                    tpPercent = (1 - (baseTpNeeded / entryPrice)) * 100;
-                }
+            let atrPercent = getRollingATRPercentAvg(sourceCandles, 14);
+            if (!atrPercent || isNaN(atrPercent) || atrPercent <= 0) {
+                atrPercent = 1.0; // fallback default volatility
             }
+
+            // Scale multiplier: 50 score -> 1.0x ATR, 100 score -> 2.0x ATR
+            const scoreFactor = Math.max(50, Math.min(100, finalScore));
+            const multiplier = 1.0 + ((scoreFactor - 50) / 50) * 1.0;
+
+            let tpPercent = atrPercent * multiplier;
 
             // Clamp tpPercent between config bounds
             tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, tpPercent));
