@@ -288,9 +288,41 @@ export class ProcessPendingState {
         let tp = state.tpPrice;
         if (!tp) {
             const c = TradingConfig.getConfig();
-            const tpPercent = c.TP_PRICE_MOVEMENT_PERCENT;
             const side = e.side || state.side || "buy";
             const isBuy = side.toLowerCase() === "buy";
+
+            // Calculate slLimit using sl and buffers
+            const slLimit = isBuy
+                ? sl * (1 - c.SL_LIMIT_BUFFER_PERCENT / 100) / (1 - c.SL_TRIGGER_BUFFER_PERCENT / 100)
+                : sl * (1 + c.SL_LIMIT_BUFFER_PERCENT / 100) / (1 + c.SL_TRIGGER_BUFFER_PERCENT / 100);
+
+            const riskPriceDist = Math.abs(entryPriceValue - slLimit);
+            const feePercent = c.ESTIMATED_FEE_PERCENT / 100;
+            const entryFee = entryPriceValue * (feePercent / 2);
+            const exitFeeSl = slLimit * (feePercent / 2);
+            const netRisk = riskPriceDist + (entryFee + exitFeeSl);
+
+            const targetRr = c.TARGET_RR ?? 1.5;
+            const minTpPerc = c.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.7;
+            const maxTpPerc = c.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
+
+            let tpPercent = maxTpPerc;
+            if (netRisk > 0) {
+                if (isBuy) {
+                    const targetNetReward = targetRr * netRisk;
+                    const tpLimitNeeded = (targetNetReward + entryPriceValue + entryFee) / (1 - feePercent / 2);
+                    const baseTpNeeded = tpLimitNeeded / (1 - c.TP_LIMIT_BUFFER_PERCENT / 100);
+                    tpPercent = ((baseTpNeeded / entryPriceValue) - 1) * 100;
+                } else {
+                    const targetNetReward = targetRr * netRisk;
+                    const tpLimitNeeded = (entryPriceValue - entryFee - targetNetReward) / (1 + feePercent / 2);
+                    const baseTpNeeded = tpLimitNeeded / (1 + c.TP_LIMIT_BUFFER_PERCENT / 100);
+                    tpPercent = (1 - (baseTpNeeded / entryPriceValue)) * 100;
+                }
+            }
+
+            // Clamp tpPercent between config bounds
+            tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, tpPercent));
 
             let baseTp: number;
             if (isBuy) {
@@ -309,7 +341,7 @@ export class ProcessPendingState {
             }
 
             getContextualLogger(tradesLogger, logContext).warn(
-                `[placeCancelledBracketOrders] TP price was missing in state. Recalculated fallback TP: ${tp} using entryPrice: ${entryPriceValue}, side: ${side}`
+                `[placeCancelledBracketOrders] TP price was missing in state. Recalculated dynamic fallback TP: ${tp} using entryPrice: ${entryPriceValue}, side: ${side}, dynamic tpPercent: ${tpPercent.toFixed(4)}%`
             );
         }
 

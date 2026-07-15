@@ -34,6 +34,9 @@ export interface ConfigType {
     LOOKBACK?: number;
     CONFIRMATION_LOOKBACK?: number;
     MIN_RR?: number;
+    TARGET_RR?: number;
+    MIN_TP_PRICE_MOVEMENT_PERCENT?: number;
+    MAX_TP_PRICE_MOVEMENT_PERCENT?: number;
     ESTIMATED_FEE_PERCENT: number;
     IS_WEEKEND_SAFETY_ENABLED: boolean;
     MIN_ENTRY_SCORE?: number;
@@ -293,6 +296,9 @@ export interface ActiveSubscribedBot {
     MAX_TRADE_SIZE: number
     TRADING_MODE: "conservative" | "balanced" | "aggressive" | "meme"
     MIN_RR?: number
+    TARGET_RR?: number
+    MIN_TP_PRICE_MOVEMENT_PERCENT?: number
+    MAX_TP_PRICE_MOVEMENT_PERCENT?: number
     MIN_FINAL_SCORE?: number
     DAILY_LOSS_LIMIT: number
     MAX_CONCURRENT_TRADES: number

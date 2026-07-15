@@ -235,9 +235,10 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL PERMISSION ================= */
         // If we are overriding the side for an already open trade, bypass entry-based safety checks.
+        const minRr = entryConfig.MIN_RR ?? 1.0;
         let isAllowed = positionSideOverride
             ? tp > 0 && sl > 0
-            : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed;
+            : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && rr >= minRr;
 
         /* ================= LOG ================= */
 
@@ -264,6 +265,8 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss boundary already crossed before entry: ${crossedReason}`);
         } else if (isExceededMovementLimit) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
+        } else if (rr < minRr) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Risk-Reward ratio below minimum: RR=${rr.toFixed(2)} (Min:${minRr})`);
         }
 
         return {
@@ -367,8 +370,43 @@ export class MultiTimeframeAlignment {
                 }
             }
 
+            /* ================= METRICS & RR (PRELIMINARY) ================= */
+            const rawSlLimit = direction === "BUY"
+                ? sourceCandle.low * (1 - entryConfig.SL_LIMIT_BUFFER_PERCENT / 100)
+                : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
+            slLimit = parseFloat(rawSlLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+            const riskPriceDist = Math.abs(entryPrice - slLimit);
+
+            // Include Estimated Fees in RR
+            const feePercent = entryConfig.ESTIMATED_FEE_PERCENT / 100;
+            const entryFee = entryPrice * (feePercent / 2);
+            const exitFeeSl = slLimit * (feePercent / 2);
+            const netRisk = riskPriceDist + (entryFee + exitFeeSl);
+
             /* ================= DYNAMIC TP ================= */
-            const tpPercent = entryConfig.TP_PRICE_MOVEMENT_PERCENT;
+            const targetRr = entryConfig.TARGET_RR ?? 1.5;
+            const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.7;
+            const maxTpPerc = entryConfig.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
+
+            let tpPercent = maxTpPerc;
+            if (netRisk > 0) {
+                if (direction === "BUY") {
+                    const targetNetReward = targetRr * netRisk;
+                    const tpLimitNeeded = (targetNetReward + entryPrice + entryFee) / (1 - feePercent / 2);
+                    const baseTpNeeded = tpLimitNeeded / (1 - entryConfig.TP_LIMIT_BUFFER_PERCENT / 100);
+                    tpPercent = ((baseTpNeeded / entryPrice) - 1) * 100;
+                } else {
+                    const targetNetReward = targetRr * netRisk;
+                    const tpLimitNeeded = (entryPrice - entryFee - targetNetReward) / (1 + feePercent / 2);
+                    const baseTpNeeded = tpLimitNeeded / (1 + entryConfig.TP_LIMIT_BUFFER_PERCENT / 100);
+                    tpPercent = (1 - (baseTpNeeded / entryPrice)) * 100;
+                }
+            }
+
+            // Clamp tpPercent between config bounds
+            tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, tpPercent));
+
             let baseTp: number;
             if (direction === "BUY") {
                 baseTp = entryPrice * (1 + tpPercent / 100);
@@ -386,12 +424,7 @@ export class MultiTimeframeAlignment {
                 tp = parseFloat(tp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             }
 
-            /* ================= METRICS & RR ================= */
-            const rawSlLimit = direction === "BUY"
-                ? sourceCandle.low * (1 - entryConfig.SL_LIMIT_BUFFER_PERCENT / 100)
-                : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
-            slLimit = parseFloat(rawSlLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-
+            /* ================= METRICS & RR (FINAL) ================= */
             const tpLimitFactor = 1 - (direction === "BUY" ? entryConfig.TP_LIMIT_BUFFER_PERCENT : -entryConfig.TP_LIMIT_BUFFER_PERCENT) / 100;
             const rawTpLimit = baseTp * tpLimitFactor;
             if (rawTpLimit <= 0) {
@@ -400,17 +433,9 @@ export class MultiTimeframeAlignment {
                 tpLimit = parseFloat(rawTpLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             }
 
-            const riskPriceDist = Math.abs(entryPrice - slLimit);
             const rewardPriceDist = Math.abs(tpLimit - entryPrice);
-
-            // Include Estimated Fees in RR
-            const feePercent = entryConfig.ESTIMATED_FEE_PERCENT / 100;
-            const entryFee = entryPrice * (feePercent / 2);
             const exitFeeTp = tpLimit * (feePercent / 2);
-            const exitFeeSl = slLimit * (feePercent / 2);
-
             const netReward = rewardPriceDist - (entryFee + exitFeeTp);
-            const netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
             rr = netRisk > 0 ? netReward / netRisk : 0;
 
