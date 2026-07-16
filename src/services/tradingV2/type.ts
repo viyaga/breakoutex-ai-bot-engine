@@ -30,6 +30,7 @@ export interface ConfigType {
     MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: number;
     DRY_RUN: boolean;
     IS_TESTING: boolean;
+    IS_TRAILING_SL_ENABLED?: boolean;
     LOOKBACK?: number;
     CONFIRMATION_LOOKBACK?: number;
     MIN_RR?: number;

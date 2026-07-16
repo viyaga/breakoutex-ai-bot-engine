@@ -429,18 +429,31 @@ export class ProcessPendingState {
                 return this.placeCancelledBracketOrders(s, e, slPrice, logContext, true);
             }
 
-            const sl = mtf.sl;
+            const isTrailingSlEnabled = TradingConfig.getConfig().IS_TRAILING_SL_ENABLED ?? true;
+            const sl = isTrailingSlEnabled ? mtf.sl : slPrice;
             const tp = tpPrice || mtf.tp;
 
-            const updateRes = await deltaExchange.updateStopLossOrder(
-                s.stopLossOrderId,
-                slPrice,
-                TradingConfig.getConfig().PRODUCT_ID,
-                sym,
-                e.side,
-                sl,
-                logContext
-            );
+            let updateRes = { success: false, slPrice: slPrice, isSlSame: true, isSlReversed: false, isAlreadyTriggered: false };
+            if (isTrailingSlEnabled) {
+                const slUpdate = await deltaExchange.updateStopLossOrder(
+                    s.stopLossOrderId,
+                    slPrice,
+                    TradingConfig.getConfig().PRODUCT_ID,
+                    sym,
+                    e.side,
+                    sl,
+                    logContext
+                );
+                updateRes = {
+                    success: slUpdate.success,
+                    slPrice: slUpdate.slPrice,
+                    isSlSame: slUpdate.isSlSame ?? false,
+                    isSlReversed: slUpdate.isSlReversed ?? false,
+                    isAlreadyTriggered: slUpdate.isAlreadyTriggered ?? false
+                };
+            } else {
+                logger.info(`[PriceTrailing] Trailing stop loss is disabled for ${sym}. Skipping stop-loss update.`);
+            }
 
             let tpUpdatedValue = tpPrice || 0;
             let isTpAlreadyTriggered = false;
