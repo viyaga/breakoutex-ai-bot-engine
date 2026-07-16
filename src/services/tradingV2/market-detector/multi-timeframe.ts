@@ -264,6 +264,29 @@ export class MultiTimeframeAlignment {
                 mode: structureResult.mode,
                 details: structureResult.details,
             });
+
+            if (entryConfig.IS_TESTING) {
+                const warnings: string[] = [];
+                if (rr < minRr) {
+                    warnings.push(`Risk-Reward ratio below minimum: RR=${rr.toFixed(2)} (Min:${minRr})`);
+                }
+                if (isSlAlreadyCrossed) {
+                    warnings.push(`Stop loss boundary already crossed before entry: ${crossedReason}`);
+                }
+                if (isExceededMovementLimit) {
+                    warnings.push(`Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
+                }
+                if (!isPassingMinScores) {
+                    warnings.push(`Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
+                }
+                if (finalScore < minFinal) {
+                    warnings.push(`Final score below minimum: Score=${finalScore} (Min:${minFinal})`);
+                }
+
+                if (warnings.length > 0) {
+                    marketDetectorLogger.warn(`⚠️ [TESTING-WARNING] ${symbol} (Would be skipped in Production): \n${warnings.map(w => `      * ${w}`).join('\n')}`);
+                }
+            }
         } else if (!entryConfig.IS_TESTING && !isPassingMinScores) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
         } else if (isSlAlreadyCrossed) {
