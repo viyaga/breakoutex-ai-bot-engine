@@ -409,12 +409,12 @@ export class MultiTimeframeAlignment {
                 : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
             slLimit = parseFloat(rawSlLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
-            const riskPriceDist = Math.abs(entryPrice - slLimit);
+            const riskPriceDist = Math.abs(entryPrice - sl);
 
             // Include Estimated Fees in RR
             const feePercent = entryConfig.ESTIMATED_FEE_PERCENT / 100;
             const entryFee = entryPrice * (feePercent / 2);
-            const exitFeeSl = slLimit * (feePercent / 2);
+            const exitFeeSl = sl * (feePercent / 2);
             const netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
             /* ================= DYNAMIC TP ================= */
@@ -463,8 +463,8 @@ export class MultiTimeframeAlignment {
                 tpLimit = parseFloat(rawTpLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             }
 
-            const rewardPriceDist = Math.abs(tpLimit - entryPrice);
-            const exitFeeTp = tpLimit * (feePercent / 2);
+            const rewardPriceDist = Math.abs(tp - entryPrice);
+            const exitFeeTp = tp * (feePercent / 2);
             const netReward = rewardPriceDist - (entryFee + exitFeeTp);
 
             rr = netRisk > 0 ? netReward / netRisk : 0;
