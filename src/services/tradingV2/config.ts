@@ -34,7 +34,7 @@ export class TradingConfig {
         MAX_TP_PRICE_MOVEMENT_PERCENT: 3.0,
         DRY_RUN: false,
         IS_TESTING: process.env.IS_TESTING === "true",
-        IS_TRAILING_SL_ENABLED: true,
+        IS_TRAILING_SL_ENABLED: false,
         CONFIRMATION_LOOKBACK: 36,
         ESTIMATED_FEE_PERCENT: 0.1,
         IS_WEEKEND_SAFETY_ENABLED: true,

@@ -218,7 +218,8 @@ export class MultiTimeframeAlignment {
             entryConfig,
             confirmationCandles,
             structureCandles,
-            finalScore
+            finalScore,
+            isAllowedScore
         );
 
         const {
@@ -327,7 +328,8 @@ export class MultiTimeframeAlignment {
         entryConfig: ConfigType,
         confirmationCandles: Candle[],
         structureCandles: Candle[],
-        finalScore: number
+        finalScore: number,
+        isAllowedScore: boolean = false
     ): {
         sl: number;
         tp: number;
@@ -468,6 +470,56 @@ export class MultiTimeframeAlignment {
 
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
+
+            /* ================= FORCED TP FOR MIN RR WHEN SCORE IS GOOD ================= */
+            const minRr = entryConfig.MIN_RR ?? 1.0;
+            if (isAllowedScore && rr < minRr && !isSlAlreadyCrossed && !isExceededMovementLimit && netRisk > 0) {
+                const initialRr = rr;
+                const initialTp = tp;
+                const requiredNetReward = minRr * netRisk;
+
+                let forcedTp: number;
+                if (direction === "BUY") {
+                    forcedTp = (requiredNetReward + entryPrice * (1 + feePercent / 2)) / (1 - feePercent / 2);
+                } else {
+                    forcedTp = (entryPrice * (1 - feePercent / 2) - requiredNetReward) / (1 + feePercent / 2);
+                }
+
+                tp = parseFloat(forcedTp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+                // Recalculate baseTp & tpLimit based on forced tp
+                baseTp = tp / tpTriggerFactor;
+                const rawTpLimitForced = baseTp * tpLimitFactor;
+                if (rawTpLimitForced <= 0) {
+                    tpLimit = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                } else {
+                    tpLimit = parseFloat(rawTpLimitForced.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                }
+
+                // Recalculate metrics with forced TP
+                let forcedRewardDist = Math.abs(tp - entryPrice);
+                let forcedExitFeeTp = tp * (feePercent / 2);
+                let forcedNetReward = forcedRewardDist - (entryFee + forcedExitFeeTp);
+                rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
+
+                // Adjust by tick step if decimal rounding placed rr slightly below minRr
+                const tick = 1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES);
+                let loopCount = 0;
+                while (rr < minRr && loopCount < 5) {
+                    tp = parseFloat((tp + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    forcedRewardDist = Math.abs(tp - entryPrice);
+                    forcedExitFeeTp = tp * (feePercent / 2);
+                    forcedNetReward = forcedRewardDist - (entryFee + forcedExitFeeTp);
+                    rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
+                    loopCount++;
+                }
+
+                tpPerc = entryPrice > 0 ? (forcedRewardDist / entryPrice) * 100 * leverage : 0;
+
+                marketDetectorLogger.info(
+                    `[DynamicTP] ${entryConfig.SYMBOL}: Score is good (Score: ${finalScore}), but initial RR (${initialRr.toFixed(2)}) < minRR (${minRr}). Forced TP to min RR range: initial TP=${initialTp} -> forced TP=${tp}, updated RR=${rr.toFixed(2)}`
+                );
+            }
         }
 
         return {
