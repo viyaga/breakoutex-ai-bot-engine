@@ -271,9 +271,8 @@ export class Utils {
 
             ...(sl && {
                 stop_loss_order: {
-                    order_type: "limit_order",
+                    order_type: "market_order",
                     stop_price: String(slTriggerPrice),                 // trigger
-                    limit_price: String(slLimitPrice),     // buffered
                 },
             }),
         };
