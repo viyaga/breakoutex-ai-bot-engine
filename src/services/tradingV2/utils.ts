@@ -90,30 +90,21 @@ export class Utils {
     }
 
     /**
-     * Validates the stop_price and limit_price of a stop order (TP or SL)
-     * against position side, entry/market price, and configured buffers.
+     * Validates stop_price (and optional limit_price) to ensure sanity and prevent orders triggering immediately.
      */
     static validateStopLimitPrice(params: {
         type: "tp" | "sl";
         positionSide: OrderSide;
         stopPrice: number | string;
-        limitPrice: number | string;
+        limitPrice?: number | string;
         entryOrMarketPrice?: number;
     }): { isValid: boolean; error?: string } {
         const stopPriceNum = Number(params.stopPrice);
-        const limitPriceNum = Number(params.limitPrice);
 
         if (isNaN(stopPriceNum) || stopPriceNum <= 0) {
             return {
                 isValid: false,
                 error: `${params.type.toUpperCase()} stop_price must be a positive number, got: ${params.stopPrice}`
-            };
-        }
-
-        if (isNaN(limitPriceNum) || limitPriceNum <= 0) {
-            return {
-                isValid: false,
-                error: `${params.type.toUpperCase()} limit_price must be a positive number, got: ${params.limitPrice}`
             };
         }
 
@@ -146,6 +137,20 @@ export class Utils {
                     };
                 }
             }
+        }
+
+        // If no limitPrice is specified (e.g. market_order), validation passes
+        if (params.limitPrice === undefined) {
+            return { isValid: true };
+        }
+
+        const limitPriceNum = Number(params.limitPrice);
+
+        if (isNaN(limitPriceNum) || limitPriceNum <= 0) {
+            return {
+                isValid: false,
+                error: `${params.type.toUpperCase()} limit_price must be a positive number, got: ${params.limitPrice}`
+            };
         }
 
         // 2. Verify buffer direction (limit_price relative to stop_price)
@@ -213,15 +218,10 @@ export class Utils {
     ) {
         const c = TradingConfig.getConfig();
 
-        const triggerFactor = 1 - (positionSide === "buy" ? c.SL_TRIGGER_BUFFER_PERCENT : -c.SL_TRIGGER_BUFFER_PERCENT) / 100;
-        const limitFactor = 1 - (positionSide === "buy" ? c.SL_LIMIT_BUFFER_PERCENT : -c.SL_LIMIT_BUFFER_PERCENT) / 100;
-
         const tpTriggerFactor = 1 - (positionSide === "buy" ? c.TP_TRIGGER_BUFFER_PERCENT : -c.TP_TRIGGER_BUFFER_PERCENT) / 100;
         const tpLimitFactor = 1 - (positionSide === "buy" ? c.TP_LIMIT_BUFFER_PERCENT : -c.TP_LIMIT_BUFFER_PERCENT) / 100;
 
         const slTriggerPrice = this.clampPrice(sl);
-        const slLimitPrice = this.clampPrice(triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl);
-
         const tpTriggerPrice = this.clampPrice(tp);
         const tpLimitPrice = this.clampPrice(tpTriggerFactor !== 0 ? tp * (tpLimitFactor / tpTriggerFactor) : tp);
 
@@ -246,7 +246,6 @@ export class Utils {
                 type: "sl",
                 positionSide,
                 stopPrice: slTriggerPrice,
-                limitPrice: slLimitPrice,
                 entryOrMarketPrice: entryPrice
             });
             if (!validation.isValid) {

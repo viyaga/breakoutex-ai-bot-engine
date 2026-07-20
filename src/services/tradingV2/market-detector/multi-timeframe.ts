@@ -248,7 +248,7 @@ export class MultiTimeframeAlignment {
         /* ================= LOG ================= */
 
         const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
-        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | SL Limit: ${slLimit} | RR: ${rr.toFixed(2)}`);
+        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | RR: ${rr.toFixed(2)}`);
 
         if (isAllowed) {
             marketDetectorLogger.debug(`[MarketProbability] ${symbol} Confirmation`, {
@@ -404,10 +404,7 @@ export class MultiTimeframeAlignment {
             }
 
             /* ================= METRICS & RR (PRELIMINARY) ================= */
-            const rawSlLimit = direction === "BUY"
-                ? sourceCandle.low * (1 - entryConfig.SL_LIMIT_BUFFER_PERCENT / 100)
-                : sourceCandle.high * (1 + entryConfig.SL_LIMIT_BUFFER_PERCENT / 100);
-            slLimit = parseFloat(rawSlLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+            slLimit = sl;
 
             const riskPriceDist = Math.abs(entryPrice - sl);
 

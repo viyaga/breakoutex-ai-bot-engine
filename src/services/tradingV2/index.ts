@@ -233,12 +233,12 @@ export class TradingV2 {
             loggers.detectorLogger.info(
                 `[MTF-ALLOWED] ${symbol}: Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${mtf.tp
                 } (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${mtf.sl
-                } (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`
+                } (${mtf.slPerc.toFixed(2)}%), Net RR=${mtf.rr.toFixed(2)}`
             );
             loggers.cronLogger.info(
                 `[MTF] Price Levels target: CurrentPrice=${currentPrice}, TP Trigger=${mtf.tp
                 } (${mtf.tpPerc.toFixed(2)}%), TP Limit=${mtf.tpLimit}, SL Trigger=${mtf.sl
-                } (${mtf.slPerc.toFixed(2)}%), SL Limit=${mtf.slLimit}, Net RR=${mtf.rr.toFixed(2)}`
+                } (${mtf.slPerc.toFixed(2)}%), Net RR=${mtf.rr.toFixed(2)}`
             );
 
             // Log to separate file for MTF allowed trades
@@ -246,8 +246,7 @@ export class TradingV2 {
                 `[ALLOWED] ${symbol} | CurrentPrice: ${currentPrice} | Score: ${mtf.finalScore
                 } (Entry:${mtf.entryScore}, Conf:${mtf.confirmationProbability}, Struct:${mtf.structureProbability
                 }) | TP Trigger: ${mtf.tp} (${mtf.tpPerc.toFixed(2)}%) | TP Limit: ${mtf.tpLimit
-                } | SL Trigger: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | SL Limit: ${mtf.slLimit
-                } | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction
+                } | SL Trigger: ${mtf.sl} (${mtf.slPerc.toFixed(2)}%) | RR: ${mtf.rr.toFixed(2)} | Fees: ${c.ESTIMATED_FEE_PERCENT}% | Dir: ${mtf.direction
                 }`
             );
         }

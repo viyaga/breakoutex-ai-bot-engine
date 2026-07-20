@@ -182,17 +182,9 @@ export class DeltaExchange {
         }
 
         // ---------------------------------------------------------------------
-        // 2️⃣ Compute the buffered trigger/limit prices.
+        // 2️⃣ Compute the trigger price.
         // ---------------------------------------------------------------------
-        const triggerBufferPct = Math.max(c.SL_TRIGGER_BUFFER_PERCENT, 0.01);
-        const limitBufferPct = Math.max(c.SL_LIMIT_BUFFER_PERCENT, 0.01);
-        const triggerFactor =
-            1 - (orderSide === "buy" ? triggerBufferPct : -triggerBufferPct) / 100;
-        const limitFactor =
-            1 - (orderSide === "buy" ? limitBufferPct : -limitBufferPct) / 100;
-
         let slTriggerPrice = sl; 
-        let slLimitPrice = triggerFactor !== 0 ? sl * (limitFactor / triggerFactor) : sl;
 
         if (marketPrice) {
             if (
@@ -221,19 +213,16 @@ export class DeltaExchange {
                 );
 
                 slTriggerPrice = adjustedStop;
-                slLimitPrice = triggerFactor !== 0 ? adjustedStop * (limitFactor / triggerFactor) : adjustedStop;
             }
         }
 
         const stopPrice = String(Utils.clampPrice(slTriggerPrice));
-        const limitPrice = String(Utils.clampPrice(slLimitPrice));
 
         // Perform validation check
         const validation = Utils.validateStopLimitPrice({
             type: "sl",
             positionSide: orderSide,
             stopPrice,
-            limitPrice,
             entryOrMarketPrice: marketPrice || undefined
         });
         if (!validation.isValid) {
@@ -269,7 +258,6 @@ export class DeltaExchange {
             id,
             product_id: Number(productId),
             product_symbol: productSymbol,
-            limit_price: limitPrice,
             stop_price: stopPrice,
         };
 
@@ -281,7 +269,7 @@ export class DeltaExchange {
             if (updateRes?.success) {
                 const order = updateRes.result || payload;
                 const plLogger = getContextualLogger(placedOrdersLogger, logContext);
-                plLogger.info(`[SL_UPDATE] Symbol: ${productSymbol} | Order ID: ${order.id || id} | SL Trigger (Stop Price): ${order.stop_price} | SL Limit: ${order.limit_price}`);
+                plLogger.info(`[SL_UPDATE] Symbol: ${productSymbol} | Order ID: ${order.id || id} | SL Trigger (Stop Price): ${order.stop_price}`);
             }
             return { success: updateRes?.success ?? false, slPrice: Number(stopPrice) };
         } catch (error: any) {
@@ -489,8 +477,8 @@ export class DeltaExchange {
                     plLogger.info(
                         `[INITIAL_BRACKET] Symbol: ${symbol} | ` +
                         `TP ID: ${tpOrder?.id || 'N/A'}, TP Trigger (Stop Price): ${tpOrder?.stop_price || 'N/A'}, TP Limit: ${tpOrder?.limit_price || 'N/A'} | ` +
-                        `SL ID: ${slOrder?.id || 'N/A'}, SL Trigger (Stop Price): ${slOrder?.stop_price || 'N/A'}, SL Limit: ${slOrder?.limit_price || 'N/A'} | ` +
-                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, SL Limit Buffer: ${c.SL_LIMIT_BUFFER_PERCENT}%, TP Trigger Buffer: ${c.TP_TRIGGER_BUFFER_PERCENT}%, TP Limit Buffer: ${c.TP_LIMIT_BUFFER_PERCENT}%`
+                        `SL ID: ${slOrder?.id || 'N/A'}, SL Trigger (Stop Price): ${slOrder?.stop_price || 'N/A'} (Market Order) | ` +
+                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, TP Trigger Buffer: ${c.TP_TRIGGER_BUFFER_PERCENT}%, TP Limit Buffer: ${c.TP_LIMIT_BUFFER_PERCENT}%`
                     );
                     plLogger.info("Bracket order raw response details:", { raw });
 

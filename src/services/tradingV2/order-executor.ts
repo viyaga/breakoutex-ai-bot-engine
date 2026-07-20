@@ -73,9 +73,9 @@ export class OrderExecutor {
         tradeLogger.info(
             `Price levels - Entry: ${entryPrice}, TP: ${tp} (${mtf.tpPerc.toFixed(
                 2
-            )}%), TP Limit: ${mtf.tpLimit}, SL: ${sl} (${mtf.slPerc.toFixed(
+            )}%), TP Limit: ${mtf.tpLimit}, SL Trigger: ${sl} (${mtf.slPerc.toFixed(
                 2
-            )}%), SL Limit: ${mtf.slLimit}`
+            )}%) (Market Order)`
         );
 
         // ───────────────── TP / SL ─────────────────
