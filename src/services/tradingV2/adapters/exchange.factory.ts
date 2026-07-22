@@ -1,9 +1,11 @@
 import { TradingConfig } from "../config";
+import { BinanceExchangeAdapter } from "./binance.adapter";
 import { DeltaExchangeAdapter } from "./delta.adapter";
 import { IExchangeAdapter } from "./IExchangeAdapter";
 
 export class ExchangeAdapterFactory {
     private static deltaAdapterInstance = new DeltaExchangeAdapter();
+    private static binanceAdapterInstance = new BinanceExchangeAdapter();
 
     static getAdapter(): IExchangeAdapter {
         let exchange = "delta";
@@ -19,6 +21,8 @@ export class ExchangeAdapterFactory {
         switch (exchange) {
             case "delta":
                 return this.deltaAdapterInstance;
+            case "binance":
+                return this.binanceAdapterInstance;
             default:
                 throw new Error(`Unsupported exchange: ${exchange}`);
         }
