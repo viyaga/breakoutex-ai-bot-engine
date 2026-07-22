@@ -126,7 +126,7 @@ export class BinanceExchange {
 
             let options: RequestInit = { method, headers };
 
-            if (["POST", "PUT", "DELETE"].includes(method)) {
+            if (["POST", "PUT"].includes(method)) {
                 headers["Content-Type"] = "application/x-www-form-urlencoded";
                 options.body = finalQueryString;
             } else {
