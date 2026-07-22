@@ -131,8 +131,11 @@ export class Data {
         return st;
     }
 
-    private static mapSymbol(symbol: string): string {
+    private static mapSymbol(symbol: string, exchange?: string): string {
         if (!symbol) return symbol;
+        if (exchange && exchange.toLowerCase() === "binance") {
+            return symbol;
+        }
         // Delta India perpetuals typically use USD suffix instead of USDT
         if (symbol.endsWith("USDT")) {
             return symbol.replace("USDT", "USD");
@@ -181,7 +184,7 @@ export class Data {
 
         // 1. Identify unique symbols to avoid redundant API calls
         const uniqueMappedSymbols = [...new Set(
-            bots.map((bot) => this.mapSymbol(bot.SYMBOL || "")).filter(Boolean) as string[]
+            bots.map((bot) => this.mapSymbol(bot.SYMBOL || "", (bot as any).EXCHANGE)).filter(Boolean) as string[]
         )];
 
         tradingCronLogger.info(`[fetchTradingConfigs] Found ${uniqueMappedSymbols.length} unique symbols across ${bots.length} bots. Fetching product data...`);
@@ -221,7 +224,8 @@ export class Data {
         // 3. Merge product data into each bot configuration
         const mergedConfigs: ConfigType[] = bots.map((bot) => {
             const rawSymbol = bot.SYMBOL;
-            const mappedSymbol = this.mapSymbol(rawSymbol);
+            const exchangeName = ((bot as any).EXCHANGE || "delta").toLowerCase();
+            const mappedSymbol = this.mapSymbol(rawSymbol, exchangeName);
 
             const config: ConfigType = {
                 ...defaultConfig,
@@ -232,6 +236,12 @@ export class Data {
                 TRADING_MODE: bot.TRADING_MODE === ("safe" as any) ? "conservative" : bot.TRADING_MODE,
                 IS_WEEKEND_SAFETY_ENABLED: bot.IS_WEEKEND_SAFETY_ENABLED !== false,
             } as ConfigType;
+
+            if (exchangeName === "binance") {
+                if (!config.BASE_URL || config.BASE_URL.includes("delta")) {
+                    config.BASE_URL = config.IS_TESTING ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+                }
+            }
 
             const p = productDataMap.get(mappedSymbol);
             if (p) {
