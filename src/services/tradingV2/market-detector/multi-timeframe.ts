@@ -80,18 +80,20 @@ export class MultiTimeframeAlignment {
             (rawConfirmationProbability * 0.20)
         );
 
-        marketDetectorLogger.info(`[MTF] Sub-scores for ${entryConfig.SYMBOL}: Entry=${entryScore}, Confirmation=${confirmationProbability} (BO:${confirmationBreakout.score}, Prob:${rawConfirmationProbability}), Structure=${structureProbability}`);
-        marketDetectorLogger.debug(`[MTF] Breakout details for ${entryConfig.SYMBOL}: Direction=${breakout.direction}, Score=${breakout.score}, Reason=${breakout.reason}`);
-        marketDetectorLogger.debug(`[MTF] Confirmation Breakout details: Direction=${confirmationBreakout.direction}, Score=${confirmationBreakout.score}, Reason=${confirmationBreakout.reason}`);
+        const evalTag = positionSideOverride ? `[MTF-PosMgmt:${positionSideOverride}]` : `[MTF-NewEntry]`;
+
+        marketDetectorLogger.info(`${evalTag} Sub-scores for ${entryConfig.SYMBOL}: Entry=${entryScore}, Confirmation=${confirmationProbability} (BO:${confirmationBreakout.score}, Prob:${rawConfirmationProbability}), Structure=${structureProbability}`);
+        marketDetectorLogger.debug(`${evalTag} Breakout details for ${entryConfig.SYMBOL}: 5m Entry Dir=${breakout.direction}, Score=${breakout.score}, Reason=${breakout.reason}`);
+        marketDetectorLogger.debug(`${evalTag} 15m Confirmation Breakout details: Dir=${confirmationBreakout.direction}, Score=${confirmationBreakout.score}, Reason=${confirmationBreakout.reason}`);
 
         const symbol = entryConfig.SYMBOL;
 
-        // 🔥 FALLBACK TO 1H BREAKOUT: If entry (15m) has no breakout, but confirmation (1h) does, inherit direction from 1h
+        // 🔥 FALLBACK TO 15M BREAKOUT: If 5m entry has no breakout, but 15m confirmation does, inherit direction from 15m
         let isDirectionFromConfirmation = false;
         if (direction === "NONE" && confirmationBreakout.direction !== "NONE") {
             direction = confirmationBreakout.direction;
             isDirectionFromConfirmation = true;
-            marketDetectorLogger.info(`[MTF] ${symbol}: No 15m breakout. Inheriting 1h breakout direction instead: ${direction}`);
+            marketDetectorLogger.info(`${evalTag} ${symbol}: No 5m breakout. Inheriting 15m confirmation breakout direction instead: ${direction}`);
         }
 
         // 🔥 TESTING OVERRIDE: If testing and no breakout, force BUY
@@ -110,7 +112,7 @@ export class MultiTimeframeAlignment {
 
         if (direction === "NONE" || hasConfBreakoutMismatch) {
             if (hasConfBreakoutMismatch) {
-                marketDetectorLogger.info(`[MTF-SKIP] ${symbol}: Direction mismatch between Entry (${direction}) and Confirmation (${confirmationBreakout.direction}) breakouts.`);
+                marketDetectorLogger.info(`${evalTag}[Skip] ${symbol}: Direction mismatch between Entry (${direction}) and Confirmation (${confirmationBreakout.direction}) breakouts.`);
             }
             return {
                 entryScore,
@@ -151,17 +153,19 @@ export class MultiTimeframeAlignment {
             (structureProbability * 0.30)
         );
 
-        // 🔥 Alignment Bonus: If both 15m and 1h breakouts are aligned, add +10 to final score
-        if (!isDirectionFromConfirmation && confirmationBreakout.direction === direction) {
+        // 🔥 Breakout Alignment Bonus: If both 5m entry and 15m confirmation breakouts are active and aligned in the same direction
+        const is5mBreakoutActive = breakout.direction !== "NONE";
+        const is15mBreakoutActive = confirmationBreakout.direction !== "NONE";
+        if (is5mBreakoutActive && is15mBreakoutActive && breakout.direction === confirmationBreakout.direction) {
             finalScore = Math.min(100, finalScore + 10);
-            marketDetectorLogger.info(`[MTF] ${symbol}: Alignment Bonus! Both 15m and 1h breakouts aligned in ${direction} direction. Added +10 to final score (Final: ${finalScore})`);
+            marketDetectorLogger.info(`${evalTag} ${symbol}: Breakout Alignment Bonus! Both 5m (${breakout.direction}) and 15m (${confirmationBreakout.direction}) breakouts aligned. +10 added to score (Final: ${finalScore})`);
         }
 
         // 🔥 Trend Alignment Score Adjustment (Instead of blocking the trade)
         const isAligned = confirmationProbability >= 50 && structureProbability >= 50 && isStructTrendAligned;
         if (isAligned) {
             finalScore = Math.min(100, finalScore + 5);
-            marketDetectorLogger.info(`[MTF] ${symbol}: Trend Aligned Bonus! Added +5 to final score (Final: ${finalScore})`);
+            marketDetectorLogger.info(`${evalTag} ${symbol}: Trend Aligned Bonus! 1h EMA trend aligned. +5 added to score (Final: ${finalScore})`);
         } else {
             const penalty = 15;
             const reasons = [];
@@ -170,10 +174,10 @@ export class MultiTimeframeAlignment {
             if (!isStructTrendAligned) reasons.push("Structure EMA trend mismatch");
 
             finalScore = Math.max(0, finalScore - penalty);
-            marketDetectorLogger.info(`[MTF] ${symbol}: Trend Alignment Mismatch (${reasons.join(", ")}). Applied -${penalty} penalty to final score (Final: ${finalScore})`);
+            marketDetectorLogger.info(`${evalTag} ${symbol}: Trend Alignment Mismatch (${reasons.join(", ")}). -${penalty} penalty applied to score (Final: ${finalScore})`);
         }
 
-        marketDetectorLogger.info(`[MTF] Final Score Calculation: (${entryScore} * 0.25) + (${confirmationProbability} * 0.45) + (${structureProbability} * 0.30) [with adjustments] = Final: ${finalScore}`);
+        marketDetectorLogger.info(`${evalTag} Final Score Calculation: (5m:${entryScore} * 0.25) + (15m:${confirmationProbability} * 0.45) + (1h:${structureProbability} * 0.30) [with adjustments] = Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
 
@@ -205,7 +209,7 @@ export class MultiTimeframeAlignment {
             const primaryScore = isDirectionFromConfirmation ? confirmationBreakout.score : entryScore;
             if (primaryScore < 65) {
                 isAllowedScore = false;
-                marketDetectorLogger.info(`[MTF-SKIP] ${symbol}: Breakout source score ${primaryScore} too low under non-strong trend conditions`);
+                marketDetectorLogger.info(`${evalTag}[Skip] ${symbol}: Breakout source score ${primaryScore} too low under non-strong trend conditions`);
             }
         }
 
@@ -248,7 +252,7 @@ export class MultiTimeframeAlignment {
 
         /* ================= LOG ================= */
 
-        const mtfLogPrefix = isAllowed ? '[MTF-Allowed]' : '[MTF-Skip]';
+        const mtfLogPrefix = isAllowed ? `${evalTag}[Allowed]` : `${evalTag}[Skip]`;
         marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | RR: ${rr.toFixed(2)}`);
 
         if (isAllowed) {
