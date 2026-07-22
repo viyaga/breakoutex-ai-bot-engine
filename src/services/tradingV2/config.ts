@@ -38,6 +38,7 @@ export class TradingConfig {
         CONFIRMATION_LOOKBACK: 36,
         ESTIMATED_FEE_PERCENT: 0.1,
         IS_WEEKEND_SAFETY_ENABLED: true,
+        EXCHANGE: "delta",
         MIN_ENTRY_SCORE: 0,
         MIN_CONFIRMATION_SCORE: 60,
         MIN_STRUCTURE_SCORE: 20,

@@ -2,7 +2,7 @@ import { TradingV2 } from ".";
 import { ITradeState, TradeState } from "../../models/tradeState.model";
 
 import { TradingConfig } from "./config";
-import { deltaExchange } from "./delta-exchange";
+import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import { tradingCycleErrorLogger, tradesLogger, getContextualLogger } from "./logger";
 import { Candle, OrderDetails, TargetCandle } from "./type";
 import { Utils } from "./utils";
@@ -210,7 +210,8 @@ export class ProcessPendingState {
             return updated as ITradeState;
         }
 
-        const tp = await deltaExchange.getOrderDetails(s.takeProfitOrderId);
+        const adapter = ExchangeAdapterFactory.getAdapter();
+        const tp = await adapter.getOrderDetails(s.takeProfitOrderId);
         if (tp && tp.status === "CLOSED") {
             const incrementalPnl = Number(tp.meta_data?.pnl || 0);
             const incrementalFees = Number(tp.paid_commission || 0) + entryCommission;
@@ -223,7 +224,7 @@ export class ProcessPendingState {
             return await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext);
         }
 
-        const sl = await deltaExchange.getOrderDetails(s.stopLossOrderId);
+        const sl = await adapter.getOrderDetails(s.stopLossOrderId);
         if (sl && sl.status === "CLOSED") {
 
             const incrementalPnl = Number(sl?.meta_data?.pnl || 0);
@@ -263,8 +264,9 @@ export class ProcessPendingState {
         logContext?: any,
         forceReplace: boolean = false
     ): Promise<ITradeState> {
+        const adapter = ExchangeAdapterFactory.getAdapter();
         if (!forceReplace) {
-            const slOrder = await deltaExchange.getOrderDetails(
+            const slOrder = await adapter.getOrderDetails(
                 state.stopLossOrderId!
             );
 
@@ -273,7 +275,7 @@ export class ProcessPendingState {
             }
         }
 
-        const cancelRes = await deltaExchange.cancelStopOrders({
+        const cancelRes = await adapter.cancelStopOrders({
             product_id: TradingConfig.getConfig().PRODUCT_ID,
             cancel_limit_orders: true,
         });
@@ -317,7 +319,7 @@ export class ProcessPendingState {
         }
 
         const bracketRes =
-            await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext, entryPriceValue);
+            await ExchangeAdapterFactory.getAdapter().placeTPSLBracketOrder(tp, sl, e.side, logContext, entryPriceValue);
 
         if (!bracketRes.success) {
             if (bracketRes.isNoPosition) {
@@ -395,8 +397,9 @@ export class ProcessPendingState {
             logger.info(`[PriceTrailing] Managing open position for ${sym} | State SL: ${slPrice}, State TP: ${tpPrice} | Target SL: ${mtf.sl}, Target TP: ${mtf.tp}`);
 
             // 🔍 Query TP and SL order details to check if either was manually cancelled
-            const slOrder = s.stopLossOrderId ? await deltaExchange.getOrderDetails(s.stopLossOrderId) : null;
-            const tpOrder = s.takeProfitOrderId ? await deltaExchange.getOrderDetails(s.takeProfitOrderId) : null;
+            const adapter = ExchangeAdapterFactory.getAdapter();
+            const slOrder = s.stopLossOrderId ? await adapter.getOrderDetails(s.stopLossOrderId) : null;
+            const tpOrder = s.takeProfitOrderId ? await adapter.getOrderDetails(s.takeProfitOrderId) : null;
 
             // 🔥 Recovery & Sync: Ensure DB state matches the actual active order prices on the exchange
             if (slOrder) {
@@ -435,7 +438,7 @@ export class ProcessPendingState {
 
             let updateRes = { success: false, slPrice: slPrice, isSlSame: true, isSlReversed: false, isAlreadyTriggered: false };
             if (isTrailingSlEnabled) {
-                const slUpdate = await deltaExchange.updateStopLossOrder(
+                const slUpdate = await adapter.updateStopLossOrder(
                     s.stopLossOrderId,
                     slPrice,
                     TradingConfig.getConfig().PRODUCT_ID,
@@ -458,7 +461,7 @@ export class ProcessPendingState {
             let tpUpdatedValue = tpPrice || 0;
             let isTpAlreadyTriggered = false;
             if (s.takeProfitOrderId && tpPrice && tp) {
-                const updateTpRes = await deltaExchange.updateTakeProfitOrder(
+                const updateTpRes = await adapter.updateTakeProfitOrder(
                     s.takeProfitOrderId,
                     tpPrice,
                     TradingConfig.getConfig().PRODUCT_ID,
@@ -531,7 +534,7 @@ export class ProcessPendingState {
         }
 
         const entryPrice = Utils.resolveEntryPrice(e);
-        const tpSlResult = await deltaExchange.placeTPSLBracketOrder(tp, sl, e.side, logContext, entryPrice);
+        const tpSlResult = await ExchangeAdapterFactory.getAdapter().placeTPSLBracketOrder(tp, sl, e.side, logContext, entryPrice);
 
         if (!tpSlResult.success || !tpSlResult.ids.tp || !tpSlResult.ids.sl) {
             throw new Error(`[Recovery] Failed to re-place TP/SL bracket orders during recovery. TP_ID=${tpSlResult.ids.tp}, SL_ID=${tpSlResult.ids.sl}`);
@@ -594,7 +597,7 @@ export class ProcessPendingState {
         logContext?: any
     ): Promise<ITradeState> {
         const cfg = TradingConfig.getConfig();
-        const positions = await deltaExchange.getPositions(cfg.PRODUCT_ID);
+        const positions = await ExchangeAdapterFactory.getAdapter().getPositions(cfg.PRODUCT_ID);
         const hasOpenPosition = Array.isArray(positions)
             ? positions.some(p => Number(p.size) !== 0)
             : positions && Number(positions.size) !== 0;

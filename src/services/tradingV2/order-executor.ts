@@ -1,7 +1,7 @@
 import { ConfigType, OrderSide } from "./type";
 import { BotError } from "../../models/botError.model";
 import { TradeState } from "../../models/tradeState.model";
-import { deltaExchange } from "./delta-exchange";
+import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import { Utils } from "./utils";
 
 export class OrderExecutor {
@@ -14,6 +14,7 @@ export class OrderExecutor {
         cronLogger: any,
         tradeLogger: any
     ): Promise<void> {
+        const adapter = ExchangeAdapterFactory.getAdapter();
         const { id: tradingBotId, SYMBOL: symbol } = c;
 
         // ───────────────── QUANTITY ─────────────────
@@ -53,7 +54,7 @@ export class OrderExecutor {
         tradeLogger.info(
             `[Trade] Placing ${side.toUpperCase()} entry order for ${qty} lots on ${symbol}...`
         );
-        const entry = await deltaExchange.placeEntryOrder(symbol, side, qty);
+        const entry = await adapter.placeEntryOrder(symbol, side, qty);
 
         cronLogger.info(
             `[Trade] Entry order response: success=${!!entry.result?.id}, OrderID=${
@@ -79,7 +80,7 @@ export class OrderExecutor {
         );
 
         // ───────────────── TP / SL ─────────────────
-        const tpSlResult = await deltaExchange.placeTPSLBracketOrder(tp, sl, side, {
+        const tpSlResult = await adapter.placeTPSLBracketOrder(tp, sl, side, {
             cycleId,
             tradingBotId
         }, entryPrice);

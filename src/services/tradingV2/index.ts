@@ -1,5 +1,5 @@
 import { Data } from "./data";
-import { deltaExchange } from "./delta-exchange";
+import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import {
     tradingCycleErrorLogger,
     skipTradingLogger,
@@ -282,7 +282,8 @@ export class TradingV2 {
             `Found pending trade with order ID: ${state.entryOrderId}. Fetching order details...`
         );
 
-        const orderDetails = await deltaExchange.getOrderDetails(state.entryOrderId);
+        const adapter = ExchangeAdapterFactory.getAdapter();
+        const orderDetails = await adapter.getOrderDetails(state.entryOrderId);
 
         if (!orderDetails) {
             throw new Error("Failed to fetch order details for pending trade.");

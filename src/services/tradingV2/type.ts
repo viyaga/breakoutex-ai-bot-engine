@@ -38,6 +38,7 @@ export interface ConfigType {
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number;
     ESTIMATED_FEE_PERCENT: number;
     IS_WEEKEND_SAFETY_ENABLED: boolean;
+    EXCHANGE?: string;
     MIN_ENTRY_SCORE?: number;
     MIN_CONFIRMATION_SCORE?: number;
     MIN_STRUCTURE_SCORE?: number;

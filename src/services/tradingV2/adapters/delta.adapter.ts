@@ -1,0 +1,78 @@
+import { DeltaExchange, deltaExchange } from "../delta-exchange";
+import { CancelAllOrdersFilter, OrderDetails, OrderSide, TickerData } from "../type";
+import { IExchangeAdapter } from "./IExchangeAdapter";
+
+export class DeltaExchangeAdapter implements IExchangeAdapter {
+    readonly exchangeName = "delta";
+    private readonly client: DeltaExchange;
+
+    constructor(client: DeltaExchange = deltaExchange) {
+        this.client = client;
+    }
+
+    async getCandlestickData(symbol: string, resolution: string, start: number, end: number): Promise<any> {
+        return this.client.getCandlestickData(symbol, resolution, start, end);
+    }
+
+    async getTickerData(symbol: string): Promise<TickerData | null> {
+        return this.client.getTickerData(symbol);
+    }
+
+    async getOrderDetails(id: string): Promise<OrderDetails | null> {
+        return this.client.getOrderDetails(id);
+    }
+
+    async placeEntryOrder(symbol: string, side: OrderSide, qty: number, cid?: string): Promise<any> {
+        return this.client.placeEntryOrder(symbol, side, qty, cid);
+    }
+
+    async placeTPSLBracketOrder(
+        tp: number,
+        sl: number,
+        side: OrderSide,
+        logContext?: any,
+        entryPrice?: number
+    ): Promise<{ success: boolean; ids: { tp: string; sl: string }; isNoPosition?: boolean }> {
+        return this.client.placeTPSLBracketOrder(tp, sl, side, logContext, entryPrice);
+    }
+
+    async updateStopLossOrder(
+        id: number | string,
+        slPrice: number,
+        productId: number | string,
+        productSymbol: string,
+        orderSide: OrderSide,
+        sl: number,
+        logContext?: any
+    ): Promise<{ success: boolean; slPrice: number; isSlSame?: boolean; isSlReversed?: boolean; isAlreadyTriggered?: boolean }> {
+        return this.client.updateStopLossOrder(id, slPrice, productId, productSymbol, orderSide, sl, logContext);
+    }
+
+    async updateTakeProfitOrder(
+        id: number | string,
+        tpPrice: number,
+        productId: number | string,
+        productSymbol: string,
+        orderSide: OrderSide,
+        tp: number,
+        logContext?: any
+    ): Promise<{ success: boolean; tpPrice: number; isTpSame?: boolean; isAlreadyTriggered?: boolean }> {
+        return this.client.updateTakeProfitOrder(id, tpPrice, productId, productSymbol, orderSide, tp, logContext);
+    }
+
+    async cancelStopOrders(filter: CancelAllOrdersFilter, logContext?: any): Promise<{ success: boolean }> {
+        return this.client.cancelStopOrders(filter, logContext);
+    }
+
+    async getPositions(productId?: number | string): Promise<any> {
+        return this.client.getPositions(productId);
+    }
+
+    async getOrderLeverage(productId: number | string): Promise<any> {
+        return this.client.getOrderLeverage(productId);
+    }
+
+    async changeOrderLeverage(productId: number | string, leverage: number): Promise<any> {
+        return this.client.changeOrderLeverage(productId, leverage);
+    }
+}

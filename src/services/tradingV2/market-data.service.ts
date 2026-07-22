@@ -1,6 +1,6 @@
 import { Candle, TargetCandle, ConfigType } from "./type";
 import { Utils } from "./utils";
-import { deltaExchange } from "./delta-exchange";
+import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import { tradingCycleErrorLogger, tradingCronLogger } from "./logger";
 
 export interface FetchedMarketData {
@@ -47,8 +47,9 @@ export class MarketDataService {
             const dur = Utils.getTimeframeDurationMs(timeframe);
             const now = Date.now();
             const currentCandleStart = Math.floor(now / dur) * dur;
+            const adapter = ExchangeAdapterFactory.getAdapter();
 
-            const cd = await deltaExchange.getCandlestickData(
+            const cd = await adapter.getCandlestickData(
                 c.SYMBOL,
                 timeframe,
                 currentCandleStart - 80 * dur,
@@ -91,7 +92,8 @@ export class MarketDataService {
         }
 
         const fetchPromise = (async () => {
-            const ticker = await deltaExchange.getTickerData(sym);
+            const adapter = ExchangeAdapterFactory.getAdapter();
+            const ticker = await adapter.getTickerData(sym);
             if (!ticker) {
                 throw new Error(`[workflow] No ticker data for ${sym}`);
             }

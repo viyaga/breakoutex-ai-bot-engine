@@ -400,7 +400,7 @@ export class DeltaExchange {
 
     async placeEntryOrder(symbol: string, side: OrderSide, qty: number, cid?: string) {
         const c = TradingConfig.getConfig();
-        return deltaExchange.signedRequest("POST", "/orders", { product_id: Number(c.PRODUCT_ID), product_symbol: symbol, side, size: Math.floor(qty), order_type: "market_order", time_in_force: "gtc", client_order_id: cid || `viy-${Date.now()}` });
+        return this.signedRequest("POST", "/orders", { product_id: Number(c.PRODUCT_ID), product_symbol: symbol, side, size: Math.floor(qty), order_type: "market_order", time_in_force: "gtc", client_order_id: cid || `viy-${Date.now()}` });
     }
 
     async cancelStopOrders(f: CancelAllOrdersFilter, logContext?: any): Promise<{ success: boolean }> {
