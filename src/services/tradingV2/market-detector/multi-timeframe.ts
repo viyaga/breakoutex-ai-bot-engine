@@ -243,7 +243,7 @@ export class MultiTimeframeAlignment {
 
         /* ================= FINAL PERMISSION ================= */
         // If we are overriding the side for an already open trade, bypass entry-based safety checks.
-        const minRr = entryConfig.MIN_RR ?? 1.0;
+        const minRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.0);
         let isAllowed = positionSideOverride
             ? tp > 0 && sl > 0
             : entryConfig.IS_TESTING
@@ -363,7 +363,7 @@ export class MultiTimeframeAlignment {
         const leverage = entryConfig.LEVERAGE;
 
         if (entryPrice > 0) {
-            /* ================= DYNAMIC SL ================= */
+            /* ================= DYNAMIC ATR CALCULATION ================= */
             const structSlPrice = direction === "BUY" ? structureTarget.low : structureTarget.high;
             const confSlPrice = direction === "BUY" ? confirmationTarget.low : confirmationTarget.high;
 
@@ -383,12 +383,42 @@ export class MultiTimeframeAlignment {
                 }
             }
 
+            let atrPercent = getRollingATRPercentAvg(sourceCandles, 14);
+            if (!atrPercent || isNaN(atrPercent) || atrPercent <= 0) {
+                atrPercent = 1.0; // fallback default volatility
+            }
+            const atrDistance = entryPrice * (atrPercent / 100);
+
+            /* ================= ATR EXTREME REGIME FILTER ================= */
+            if (atrPercent < 0.15) {
+                marketDetectorLogger.warn(`[ATR-Filter] ${entryConfig.SYMBOL} ATR% is extremely low (${atrPercent.toFixed(4)}%), market may be range-bound/dead`);
+            } else if (atrPercent > 4.5) {
+                marketDetectorLogger.warn(`[ATR-Filter] ${entryConfig.SYMBOL} ATR% is abnormally high (${atrPercent.toFixed(4)}%), market shows extreme volatility`);
+            }
+
+            /* ================= STRUCTURE SL + ATR VOLATILITY BUFFER ================= */
+            // Buffer of 0.5 * ATR below swing low (BUY) or above swing high (SELL)
+            const atrBuffer = 0.5 * atrDistance;
+            let structSl: number;
+
             if (direction === "BUY") {
-                sl = sourceCandle.low * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+                const rawSwingLow = sourceCandle.low;
+                const bufferedSl = rawSwingLow - atrBuffer;
+                const pctBufferSl = sourceCandle.low * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+                structSl = rawSwingLow;
+                sl = Math.min(bufferedSl, pctBufferSl);
             } else {
-                sl = sourceCandle.high * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+                const rawSwingHigh = sourceCandle.high;
+                const bufferedSl = rawSwingHigh + atrBuffer;
+                const pctBufferSl = sourceCandle.high * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+                structSl = rawSwingHigh;
+                sl = Math.max(bufferedSl, pctBufferSl);
             }
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+            marketDetectorLogger.info(
+                `[DynamicSL] ${entryConfig.SYMBOL} ATR%=${atrPercent.toFixed(4)}% | Swing ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | ATR Buffer=${atrBuffer.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} (0.5x ATR) | Final SL=${sl}`
+            );
 
             /* ================= SL CROSSING SAFETIES ================= */
             if (direction === "BUY") {
@@ -420,14 +450,9 @@ export class MultiTimeframeAlignment {
             const exitFeeSl = sl * (feePercent / 2);
             const netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
-            /* ================= DYNAMIC TP ================= */
+            /* ================= DYNAMIC TP (ATR BASED) ================= */
             const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.7;
             const maxTpPerc = entryConfig.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
-
-            let atrPercent = getRollingATRPercentAvg(sourceCandles, 14);
-            if (!atrPercent || isNaN(atrPercent) || atrPercent <= 0) {
-                atrPercent = 1.0; // fallback default volatility
-            }
 
             // Scale multiplier: 50 score -> 1.0x ATR, 100 score -> 2.0x ATR
             const scoreFactor = Math.max(50, Math.min(100, finalScore));
@@ -451,13 +476,12 @@ export class MultiTimeframeAlignment {
             tp = baseTp * tpTriggerFactor;
 
             if (tp <= 0) {
-                // Minimum positive value based on decimals (e.g., 0.0001 for 4)
                 tp = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             } else {
                 tp = parseFloat(tp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             }
 
-            /* ================= METRICS & RR (FINAL) ================= */
+            /* ================= METRICS & RR (PRELIMINARY CALCULATIONS) ================= */
             const tpLimitFactor = 1 - (direction === "BUY" ? entryConfig.TP_LIMIT_BUFFER_PERCENT : -entryConfig.TP_LIMIT_BUFFER_PERCENT) / 100;
             const rawTpLimit = baseTp * tpLimitFactor;
             if (rawTpLimit <= 0) {
@@ -466,21 +490,21 @@ export class MultiTimeframeAlignment {
                 tpLimit = parseFloat(rawTpLimit.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
             }
 
-            const rewardPriceDist = Math.abs(tp - entryPrice);
-            const exitFeeTp = tp * (feePercent / 2);
-            const netReward = rewardPriceDist - (entryFee + exitFeeTp);
+            let rewardPriceDist = Math.abs(tp - entryPrice);
+            let exitFeeTp = tp * (feePercent / 2);
+            let netReward = rewardPriceDist - (entryFee + exitFeeTp);
 
             rr = netRisk > 0 ? netReward / netRisk : 0;
 
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
 
-            /* ================= FORCED TP FOR MIN RR WHEN SCORE IS GOOD ================= */
-            const minRr = entryConfig.MIN_RR ?? 1.0;
-            if (isAllowedScore && rr < minRr && !isSlAlreadyCrossed && !isExceededMovementLimit && netRisk > 0) {
+            /* ================= FORCED TP ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
+            const targetMinRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.0);
+            if (rr < targetMinRr && !isSlAlreadyCrossed && !isExceededMovementLimit && netRisk > 0) {
                 const initialRr = rr;
                 const initialTp = tp;
-                const requiredNetReward = minRr * netRisk;
+                const requiredNetReward = targetMinRr * netRisk;
 
                 let forcedTp: number;
                 if (direction === "BUY") {
@@ -501,29 +525,65 @@ export class MultiTimeframeAlignment {
                 }
 
                 // Recalculate metrics with forced TP
-                let forcedRewardDist = Math.abs(tp - entryPrice);
-                let forcedExitFeeTp = tp * (feePercent / 2);
-                let forcedNetReward = forcedRewardDist - (entryFee + forcedExitFeeTp);
+                rewardPriceDist = Math.abs(tp - entryPrice);
+                exitFeeTp = tp * (feePercent / 2);
+                const forcedNetReward = rewardPriceDist - (entryFee + exitFeeTp);
                 rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
 
-                // Adjust by tick step if decimal rounding placed rr slightly below minRr
+                // Adjust by tick step if decimal rounding placed rr slightly below targetMinRr
                 const tick = 1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES);
                 let loopCount = 0;
-                while (rr < minRr && loopCount < 5) {
+                while (rr < targetMinRr && loopCount < 10) {
                     tp = parseFloat((tp + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                    forcedRewardDist = Math.abs(tp - entryPrice);
-                    forcedExitFeeTp = tp * (feePercent / 2);
-                    forcedNetReward = forcedRewardDist - (entryFee + forcedExitFeeTp);
-                    rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
+                    rewardPriceDist = Math.abs(tp - entryPrice);
+                    exitFeeTp = tp * (feePercent / 2);
+                    const currentNetReward = rewardPriceDist - (entryFee + exitFeeTp);
+                    rr = netRisk > 0 ? currentNetReward / netRisk : 0;
                     loopCount++;
                 }
 
-                tpPerc = entryPrice > 0 ? (forcedRewardDist / entryPrice) * 100 * leverage : 0;
+                tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
 
                 marketDetectorLogger.info(
-                    `[DynamicTP] ${entryConfig.SYMBOL}: Score is good (Score: ${finalScore}), but initial RR (${initialRr.toFixed(2)}) < minRR (${minRr}). Forced TP to min RR range: initial TP=${initialTp} -> forced TP=${tp}, updated RR=${rr.toFixed(2)}`
+                    `[DynamicTP] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < target min RR (${targetMinRr.toFixed(2)}). Forced TP by adjusting TP: initial TP=${initialTp} -> adjusted TP=${tp}, updated RR=${rr.toFixed(2)}`
                 );
             }
+
+            /* ================= TESTING MODE TP/SL GUARANTEE ================= */
+            if (entryConfig.IS_TESTING) {
+                // Ensure SL is strictly valid for exchange order placement
+                if (direction === "BUY" && (sl <= 0 || sl >= entryPrice)) {
+                    sl = parseFloat((entryPrice * 0.99).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    slLimit = sl;
+                    isSlAlreadyCrossed = false;
+                    marketDetectorLogger.info(`[TESTING] ${entryConfig.SYMBOL}: Adjusted BUY SL to valid price below entry: SL=${sl}`);
+                } else if (direction === "SELL" && (sl <= 0 || sl <= entryPrice)) {
+                    sl = parseFloat((entryPrice * 1.01).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    slLimit = sl;
+                    isSlAlreadyCrossed = false;
+                    marketDetectorLogger.info(`[TESTING] ${entryConfig.SYMBOL}: Adjusted SELL SL to valid price above entry: SL=${sl}`);
+                }
+
+                // Ensure TP is strictly valid for exchange order placement
+                if (direction === "BUY" && (tp <= 0 || tp <= entryPrice || tp <= sl)) {
+                    tp = parseFloat((entryPrice * 1.02).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    marketDetectorLogger.info(`[TESTING] ${entryConfig.SYMBOL}: Adjusted BUY TP to valid price above entry: TP=${tp}`);
+                } else if (direction === "SELL" && (tp <= 0 || tp >= entryPrice || tp >= sl)) {
+                    tp = parseFloat((entryPrice * 0.98).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    marketDetectorLogger.info(`[TESTING] ${entryConfig.SYMBOL}: Adjusted SELL TP to valid price below entry: TP=${tp}`);
+                }
+
+                // Recalculate metrics for testing logs
+                const finalRiskDist = Math.abs(entryPrice - sl);
+                const finalRewardDist = Math.abs(tp - entryPrice);
+                slPerc = entryPrice > 0 ? (finalRiskDist / entryPrice) * 100 * leverage : 0;
+                tpPerc = entryPrice > 0 ? (finalRewardDist / entryPrice) * 100 * leverage : 0;
+                rr = finalRiskDist > 0 ? finalRewardDist / finalRiskDist : 1.0;
+            }
+
+            marketDetectorLogger.info(
+                `[SlTpLevels] ${entryConfig.SYMBOL} (${direction}) | Entry: ${entryPrice} | SL: ${sl} (-${slPerc.toFixed(2)}%) | TP: ${tp} (+${tpPerc.toFixed(2)}%) | RR: ${rr.toFixed(2)} | Testing: ${entryConfig.IS_TESTING}`
+            );
         }
 
         return {

@@ -2,6 +2,7 @@ import { TradingConfig } from "../config";
 import { BinanceExchangeAdapter } from "./binance.adapter";
 import { DeltaExchangeAdapter } from "./delta.adapter";
 import { IExchangeAdapter } from "./IExchangeAdapter";
+import { tradingCronLogger } from "../logger";
 
 export class ExchangeAdapterFactory {
     private static deltaAdapterInstance = new DeltaExchangeAdapter();
@@ -15,7 +16,7 @@ export class ExchangeAdapterFactory {
             case "binance":
                 return this.binanceAdapterInstance;
             default:
-                // Default fallback to delta adapter if unrecognized
+                tradingCronLogger.warn(`[ExchangeAdapterFactory] Unrecognized exchange "${exchangeName}", falling back to default Delta adapter`);
                 return this.deltaAdapterInstance;
         }
     }
