@@ -1,7 +1,14 @@
-import { CancelAllOrdersFilter, OrderDetails, OrderSide, Position, TickerData } from "../type";
+import { ActiveSubscribedBot, CancelAllOrdersFilter, ConfigType, OrderDetails, OrderSide, Position, TickerData } from "../type";
 
 export interface IExchangeAdapter {
     readonly exchangeName: string;
+
+    mapSymbol(symbol: string): string;
+    prepareConfig(
+        bot: ActiveSubscribedBot,
+        defaultConfig: Partial<ConfigType>,
+        productDataMap: Map<string, any>
+    ): ConfigType;
 
     getCandlestickData(symbol: string, resolution: string, start: number, end: number): Promise<any>;
     getTickerData(symbol: string): Promise<TickerData | null>;

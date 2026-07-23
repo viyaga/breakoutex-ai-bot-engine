@@ -287,6 +287,7 @@ export interface EditOrderPayload {
 export interface ActiveSubscribedBot {
     id: string
     USER_ID: string
+    EXCHANGE?: string
     API_KEY: string
     SECRET_KEY: string
     SYMBOL: string

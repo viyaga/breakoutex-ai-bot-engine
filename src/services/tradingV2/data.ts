@@ -7,7 +7,12 @@ import { ConfigType, ActiveSubscribedBot } from "./type";
 import { ProcessPendingState } from "./ProcessPendingState";
 import { decrypt } from "../../utils/crypto";
 
+import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
+
 export class Data {
+    // Static in-memory cache for exchange product specs (1 hour TTL)
+    private static productCache = new Map<string, { data: any; timestamp: number }>();
+    private static PRODUCT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
     static async getOrCreateState(
         tradingBotId: string, 
@@ -36,7 +41,7 @@ export class Data {
                 await st.save();
             }
 
-            // 🔥 BUG FIX: If we have an active open state but haven't placed an entry order yet,
+            // If we have an active open state but haven't placed an entry order yet,
             // recalculate the quantity based on the current price, current config, and multiplier.
             if (!st.entryOrderId) {
                 const lastClosed = await TradeState.findOne({ tradingBotId, status: 'closed' })
@@ -131,24 +136,43 @@ export class Data {
         return st;
     }
 
-    private static mapSymbol(symbol: string, exchange?: string): string {
-        if (!symbol) return symbol;
-        if (exchange && exchange.toLowerCase() === "binance") {
-            return symbol;
+    private static async fetchDeltaProduct(mappedSymbol: string, baseUrl: string): Promise<any> {
+        const cacheKey = `delta:${mappedSymbol}`;
+        const cached = this.productCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp < this.PRODUCT_CACHE_TTL_MS)) {
+            return cached.data;
         }
-        // Delta India perpetuals typically use USD suffix instead of USDT
-        if (symbol.endsWith("USDT")) {
-            return symbol.replace("USDT", "USD");
+
+        const productUrl = `${baseUrl}/products/${mappedSymbol}`;
+        const maxProductRetries = 3;
+
+        for (let attempt = 1; attempt <= maxProductRetries; attempt++) {
+            try {
+                tradingCronLogger.debug(`[fetchTradingConfigs] Fetching Delta product data for: ${mappedSymbol} from: ${productUrl} (Attempt ${attempt}/${maxProductRetries})`);
+                const productRes = await fetch(productUrl);
+                if (productRes.ok) {
+                    const productData: any = await productRes.json();
+                    if (productData.success && productData.result) {
+                        this.productCache.set(cacheKey, { data: productData.result, timestamp: Date.now() });
+                        tradingCronLogger.info(`[fetchTradingConfigs] ✓ Successfully fetched and cached Delta product data for ${mappedSymbol}`);
+                        return productData.result;
+                    }
+                }
+            } catch (err) {
+                tradingCronLogger.error(`[fetchTradingConfigs] Error fetching Delta product for ${mappedSymbol} (Attempt ${attempt}/${maxProductRetries}):`, err);
+            }
+            if (attempt < maxProductRetries) {
+                await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+            }
         }
-        return symbol;
+        return null;
     }
 
     static async fetchTradingConfigs(
         params: { limit: number; offset: number }
     ): Promise<ConfigType[]> {
         const { limit, offset } = params;
-
-        const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/delta?limit=${limit}&offset=${offset}&serverIp=${env.serverIp}`;
+        const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/all?limit=${limit}&offset=${offset}&serverIp=${env.serverIp}`;
 
         let bots: ActiveSubscribedBot[] = [];
         const maxConfigRetries = 3;
@@ -158,20 +182,15 @@ export class Data {
                 const res = await fetch(url);
                 if (!res.ok) {
                     tradingCronLogger.warn(`[fetchTradingConfigs] HTTP ${res.status} for ${url} (Attempt ${attempt}/${maxConfigRetries})`);
-                    if (attempt === maxConfigRetries) {
-                        break;
-                    }
+                    if (attempt === maxConfigRetries) break;
                 } else {
                     bots = (await res.json()) as ActiveSubscribedBot[];
                     break;
                 }
             } catch (err: any) {
                 tradingCronLogger.error(`[fetchTradingConfigs] Fetch error for ${url} (Attempt ${attempt}/${maxConfigRetries}):`, err);
-                if (attempt === maxConfigRetries) {
-                    break;
-                }
+                if (attempt === maxConfigRetries) break;
             }
-            // Wait with backoff before retrying
             await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
         }
 
@@ -181,91 +200,38 @@ export class Data {
         }
 
         const defaultConfig = TradingConfig.defaultConfig;
+        const deltaBaseUrl = defaultConfig.BASE_URL || "https://api.india.delta.exchange/v2";
 
-        // 1. Identify unique symbols to avoid redundant API calls
-        const uniqueMappedSymbols = [...new Set(
-            bots.map((bot) => this.mapSymbol(bot.SYMBOL || "", (bot as any).EXCHANGE)).filter(Boolean) as string[]
+        // 1. Identify unique Delta symbols using DeltaExchangeAdapter to avoid redundant API calls
+        const deltaBots = bots.filter((b) => (b.EXCHANGE || "delta").toLowerCase() === "delta");
+        const deltaAdapter = ExchangeAdapterFactory.getAdapterForExchange("delta");
+        const uniqueDeltaMappedSymbols = [...new Set(
+            deltaBots.map((bot) => deltaAdapter.mapSymbol(bot.SYMBOL || "")).filter(Boolean)
         )];
 
-        tradingCronLogger.info(`[fetchTradingConfigs] Found ${uniqueMappedSymbols.length} unique symbols across ${bots.length} bots. Fetching product data...`);
+        tradingCronLogger.info(`[fetchTradingConfigs] Processing ${bots.length} active bots across exchanges. Found ${uniqueDeltaMappedSymbols.length} unique Delta symbols.`);
 
-        // 2. Fetch product data for each unique symbol in parallel
+        // 2. Fetch Delta product metadata for uncached symbols in parallel
         const productDataMap = new Map<string, any>();
         await Promise.all(
-            uniqueMappedSymbols.map(async (mappedSymbol) => {
-                const productUrl = `${defaultConfig.BASE_URL}/products/${mappedSymbol}`;
-                const maxProductRetries = 3;
-
-                for (let attempt = 1; attempt <= maxProductRetries; attempt++) {
-                    try {
-                        tradingCronLogger.debug(`[fetchTradingConfigs] Fetching product data for unique symbol: ${mappedSymbol} from: ${productUrl} (Attempt ${attempt}/${maxProductRetries})`);
-                        const productRes = await fetch(productUrl);
-                        if (productRes.ok) {
-                            const productData: any = await productRes.json();
-                            if (productData.success && productData.result) {
-                                productDataMap.set(mappedSymbol, productData.result);
-                                tradingCronLogger.info(`[fetchTradingConfigs] ✓ Successfully fetched product data for ${mappedSymbol}`);
-                                break;
-                            }
-                        } else {
-                            tradingCronLogger.warn(`[fetchTradingConfigs] Failed to fetch product data for ${mappedSymbol}: ${productRes.status} (Attempt ${attempt}/${maxProductRetries})`);
-                        }
-                    } catch (err) {
-                        tradingCronLogger.error(`[fetchTradingConfigs] Error fetching product data for ${mappedSymbol} (Attempt ${attempt}/${maxProductRetries}):`, err);
-                    }
-                    
-                    if (attempt < maxProductRetries) {
-                        await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
-                    }
+            uniqueDeltaMappedSymbols.map(async (mappedSymbol) => {
+                const product = await this.fetchDeltaProduct(mappedSymbol, deltaBaseUrl);
+                if (product) {
+                    productDataMap.set(mappedSymbol, product);
                 }
             })
         );
 
-        // 3. Merge product data into each bot configuration
+        // 3. Merge bot configurations dynamically using exchange adapters
         const mergedConfigs: ConfigType[] = bots.map((bot) => {
-            const rawSymbol = bot.SYMBOL;
-            const exchangeName = ((bot as any).EXCHANGE || "delta").toLowerCase();
-            const mappedSymbol = this.mapSymbol(rawSymbol, exchangeName);
-
-            const config: ConfigType = {
-                ...defaultConfig,
-                ...bot,
-                id: bot.id,
-                API_KEY: decrypt(bot.API_KEY),
-                SECRET_KEY: decrypt(bot.SECRET_KEY),
-                TRADING_MODE: bot.TRADING_MODE === ("safe" as any) ? "conservative" : bot.TRADING_MODE,
-                IS_WEEKEND_SAFETY_ENABLED: bot.IS_WEEKEND_SAFETY_ENABLED !== false,
-            } as ConfigType;
-
-            if (exchangeName === "binance") {
-                if (!config.BASE_URL || config.BASE_URL.includes("delta")) {
-                    config.BASE_URL = config.IS_TESTING ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
-                }
-            }
-
-            const p = productDataMap.get(mappedSymbol);
-            if (p) {
-                // Calculate decimals from tick size
-                const decimals = p.tick_size.includes('.')
-                    ? p.tick_size.split('.')[1].length
-                    : 0;
-
-                config.PRICE_DECIMAL_PLACES = decimals;
-                config.LOT_SIZE = Number(p.contract_value);
-                config.PRODUCT_ID = Number(p.id || bot.PRODUCT_ID);
-                config.SYMBOL = p.symbol;
-
-                tradingCronLogger.info(`[fetchTradingConfigs] ✓ Applied product data to bot ${config.id} [${rawSymbol}] (ID: ${p.id}, Decimals: ${decimals}, Lot: ${config.LOT_SIZE})`);
-            } else {
-                tradingCronLogger.warn(`[fetchTradingConfigs] ⚠ No product data available for bot ${config.id} [${rawSymbol}]`);
-            }
-
-            return config;
+            const exchangeName = (bot.EXCHANGE || "delta").toLowerCase();
+            const adapter = ExchangeAdapterFactory.getAdapterForExchange(exchangeName);
+            return adapter.prepareConfig(bot, defaultConfig, productDataMap);
         });
 
-        tradingCronLogger.info(`[fetchTradingConfigs] Successfully fetched and merged ${mergedConfigs.length} configs`);
+        tradingCronLogger.info(`[fetchTradingConfigs] Successfully processed and merged ${mergedConfigs.length} configs across exchanges`);
         mergedConfigs.forEach(cfg => {
-            configDebugLogger.debug(`[fetchTradingConfigs] Final merged config for bot ${cfg.id} (${cfg.SYMBOL})`, { config: cfg });
+            configDebugLogger.debug(`[fetchTradingConfigs] Final merged config for bot ${cfg.id} (${cfg.SYMBOL} on ${cfg.EXCHANGE})`, { config: cfg });
         });
 
         return mergedConfigs;

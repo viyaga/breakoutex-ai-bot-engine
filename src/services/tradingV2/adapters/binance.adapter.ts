@@ -1,6 +1,8 @@
 import { BinanceExchange, binanceExchange } from "../binance-exchange";
-import { CancelAllOrdersFilter, OrderDetails, OrderSide, TickerData } from "../type";
+import { ActiveSubscribedBot, CancelAllOrdersFilter, ConfigType, OrderDetails, OrderSide, TickerData } from "../type";
 import { IExchangeAdapter } from "./IExchangeAdapter";
+import { decrypt } from "../../../utils/crypto";
+import { tradingCronLogger } from "../logger";
 
 export class BinanceExchangeAdapter implements IExchangeAdapter {
     readonly exchangeName = "binance";
@@ -8,6 +10,40 @@ export class BinanceExchangeAdapter implements IExchangeAdapter {
 
     constructor(client: BinanceExchange = binanceExchange) {
         this.client = client;
+    }
+
+    mapSymbol(symbol: string): string {
+        return symbol;
+    }
+
+    prepareConfig(
+        bot: ActiveSubscribedBot,
+        defaultConfig: Partial<ConfigType>,
+        _productDataMap: Map<string, any>
+    ): ConfigType {
+        const rawSymbol = bot.SYMBOL;
+
+        const config: ConfigType = {
+            ...defaultConfig,
+            ...bot,
+            id: bot.id,
+            EXCHANGE: this.exchangeName,
+            API_KEY: decrypt(bot.API_KEY),
+            SECRET_KEY: decrypt(bot.SECRET_KEY),
+            TRADING_MODE: bot.TRADING_MODE === ("safe" as any) ? "conservative" : bot.TRADING_MODE,
+            IS_WEEKEND_SAFETY_ENABLED: bot.IS_WEEKEND_SAFETY_ENABLED !== false,
+            BASE_URL: defaultConfig.IS_TESTING ? "https://testnet.binancefuture.com" : "https://fapi.binance.com",
+            LOT_SIZE: 1,
+            PRODUCT_ID: Number(bot.PRODUCT_ID) || 0,
+            SYMBOL: rawSymbol,
+        } as ConfigType;
+
+        if (!config.PRICE_DECIMAL_PLACES) {
+            config.PRICE_DECIMAL_PLACES = 2;
+        }
+
+        tradingCronLogger.info(`[BinanceAdapter] ✓ Configured bot ${config.id} [${rawSymbol}]`);
+        return config;
     }
 
     async getCandlestickData(symbol: string, resolution: string, start: number, end: number): Promise<any> {

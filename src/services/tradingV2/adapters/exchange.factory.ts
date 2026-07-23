@@ -7,6 +7,19 @@ export class ExchangeAdapterFactory {
     private static deltaAdapterInstance = new DeltaExchangeAdapter();
     private static binanceAdapterInstance = new BinanceExchangeAdapter();
 
+    static getAdapterForExchange(exchangeName: string): IExchangeAdapter {
+        const ex = (exchangeName || "delta").toLowerCase();
+        switch (ex) {
+            case "delta":
+                return this.deltaAdapterInstance;
+            case "binance":
+                return this.binanceAdapterInstance;
+            default:
+                // Default fallback to delta adapter if unrecognized
+                return this.deltaAdapterInstance;
+        }
+    }
+
     static getAdapter(): IExchangeAdapter {
         let exchange = "delta";
         try {
@@ -18,13 +31,6 @@ export class ExchangeAdapterFactory {
             // Fallback to default exchange if no config context stored
         }
 
-        switch (exchange) {
-            case "delta":
-                return this.deltaAdapterInstance;
-            case "binance":
-                return this.binanceAdapterInstance;
-            default:
-                throw new Error(`Unsupported exchange: ${exchange}`);
-        }
+        return this.getAdapterForExchange(exchange);
     }
 }
