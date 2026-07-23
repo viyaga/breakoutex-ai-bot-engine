@@ -5,7 +5,7 @@ import { evaluateBreakoutTrade } from "./master-breakout-system";
 import { getRollingATRPercentAvg } from "./indicators";
 import { Utils } from "../utils";
 
-export type TradeDecision = "STRONG_TRADE" | "GOOD_TRADE" | "WEAK_TRADE" | "SKIP";
+export type TradeDecision = "STRONG_TRADE" | "GOOD_TRADE" | "WEAK_TRADE" | "SKIP" | "TEST_TRADE";
 
 export interface TripleTFResult {
     entryScore: number;
@@ -250,10 +250,14 @@ export class MultiTimeframeAlignment {
                 ? tp > 0 && sl > 0
                 : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && rr >= minRr;
 
+        if (entryConfig.IS_TESTING && isAllowed && decision === "SKIP") {
+            decision = "TEST_TRADE";
+        }
+
         /* ================= LOG ================= */
 
         const mtfLogPrefix = isAllowed ? `${evalTag}[Allowed]` : `${evalTag}[Skip]`;
-        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | RR: ${rr.toFixed(2)}`);
+        marketDetectorLogger.info(`${mtfLogPrefix} ${symbol} | FS: ${finalScore} | Dir: ${direction} | Dec: ${decision}${entryConfig.IS_TESTING ? " [IS_TESTING=true]" : ""} | CurrentPrice: ${entryPrice} | TP Trigger: ${tp} | TP Limit: ${tpLimit} | SL Trigger: ${sl} | RR: ${rr.toFixed(2)}`);
 
         if (isAllowed) {
             marketDetectorLogger.debug(`[MarketProbability] ${symbol} Confirmation`, {
@@ -496,8 +500,8 @@ export class MultiTimeframeAlignment {
 
             rr = netRisk > 0 ? netReward / netRisk : 0;
 
-            tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
-            slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 * leverage : 0;
+            tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
+            slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 : 0;
 
             /* ================= FORCED TP ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
             const targetMinRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.0);
@@ -542,7 +546,7 @@ export class MultiTimeframeAlignment {
                     loopCount++;
                 }
 
-                tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 * leverage : 0;
+                tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
 
                 marketDetectorLogger.info(
                     `[DynamicTP] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < target min RR (${targetMinRr.toFixed(2)}). Forced TP by adjusting TP: initial TP=${initialTp} -> adjusted TP=${tp}, updated RR=${rr.toFixed(2)}`
@@ -576,13 +580,16 @@ export class MultiTimeframeAlignment {
                 // Recalculate metrics for testing logs
                 const finalRiskDist = Math.abs(entryPrice - sl);
                 const finalRewardDist = Math.abs(tp - entryPrice);
-                slPerc = entryPrice > 0 ? (finalRiskDist / entryPrice) * 100 * leverage : 0;
-                tpPerc = entryPrice > 0 ? (finalRewardDist / entryPrice) * 100 * leverage : 0;
+                slPerc = entryPrice > 0 ? (finalRiskDist / entryPrice) * 100 : 0;
+                tpPerc = entryPrice > 0 ? (finalRewardDist / entryPrice) * 100 : 0;
                 rr = finalRiskDist > 0 ? finalRewardDist / finalRiskDist : 1.0;
             }
 
+            const slRoe = (slPerc * leverage).toFixed(2);
+            const tpRoe = (tpPerc * leverage).toFixed(2);
+
             marketDetectorLogger.info(
-                `[SlTpLevels] ${entryConfig.SYMBOL} (${direction}) | Entry: ${entryPrice} | SL: ${sl} (-${slPerc.toFixed(2)}%) | TP: ${tp} (+${tpPerc.toFixed(2)}%) | RR: ${rr.toFixed(2)} | Testing: ${entryConfig.IS_TESTING}`
+                `[SlTpLevels] ${entryConfig.SYMBOL} (${direction}) | Entry: ${entryPrice} | SL: ${sl} (-${slPerc.toFixed(2)}% price, -${slRoe}% ROE @ ${leverage}x) | TP: ${tp} (+${tpPerc.toFixed(2)}% price, +${tpRoe}% ROE @ ${leverage}x) | RR: ${rr.toFixed(2)} | Testing: ${entryConfig.IS_TESTING}`
             );
         }
 
