@@ -257,6 +257,75 @@ export class ProcessPendingState {
         throw new Error("[processClosedPosition] Neither TP nor SL orders are filled/closed.");
     }
 
+    static async processTimeBasedClosedPosition(
+        s: ITradeState,
+        exitOrderRes: any,
+        entryCommission: number,
+        logContext?: any
+    ): Promise<ITradeState> {
+        const logger = getContextualLogger(tradesLogger, logContext);
+        const adapter = ExchangeAdapterFactory.getAdapter();
+
+        // 🔍 Fetch full exit order details if available
+        const exitOrderId = exitOrderRes?.id || exitOrderRes?.result?.id;
+        let exitOrderDetails: OrderDetails | null = null;
+        if (exitOrderId) {
+            try {
+                exitOrderDetails = await adapter.getOrderDetails(String(exitOrderId));
+            } catch (err) {
+                logger.warn(`[TimeBasedExitOutcome] Failed to fetch exit order details for ${exitOrderId}`, { err });
+            }
+        }
+
+        if (!exitOrderDetails && exitOrderRes?.result) {
+            exitOrderDetails = exitOrderRes.result;
+        }
+
+        const exitPrice = Number(
+            exitOrderDetails?.average_fill_price ||
+            exitOrderDetails?.limit_price ||
+            exitOrderRes?.result?.average_fill_price ||
+            exitOrderRes?.result?.limit_price ||
+            0
+        );
+
+        let incrementalPnl = Number(
+            exitOrderDetails?.meta_data?.pnl ||
+            exitOrderRes?.result?.meta_data?.pnl ||
+            0
+        );
+
+        // 📐 If exchange metadata PnL is 0 or unpopulated, calculate PnL manually from entry vs exit price
+        if (incrementalPnl === 0 && s.entryPrice && exitPrice > 0) {
+            const qty = Number(s.quantity || 1);
+            const lotSize = TradingConfig.getConfig().LOT_SIZE || 1;
+            if (s.side === "buy") {
+                incrementalPnl = (exitPrice - s.entryPrice) * qty * lotSize;
+            } else {
+                incrementalPnl = (s.entryPrice - exitPrice) * qty * lotSize;
+            }
+        }
+
+        const exitCommission = Number(
+            exitOrderDetails?.paid_commission ||
+            exitOrderRes?.result?.paid_commission ||
+            0
+        );
+        const incrementalFees = exitCommission + entryCommission;
+
+        const netPnl = s.pnl + incrementalPnl;
+        const fees = s.cumulativeFees + incrementalFees;
+        const netDebt = netPnl - fees;
+
+        logger.info(
+            `[TimeBasedExitOutcome] ${s.symbol} market exit settled. Exit Price: ${exitPrice}, Incremental PnL: ${incrementalPnl.toFixed(2)}, Incremental Fees: ${incrementalFees.toFixed(2)}, Net Debt: ${netDebt.toFixed(2)}`
+        );
+
+        return netDebt >= 0
+            ? await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext)
+            : await this.handleLoss(s, netDebt, netPnl, fees, exitPrice, incrementalPnl, incrementalFees, 1.0, exitPrice, logContext);
+    }
+
     static async placeCancelledBracketOrders(
         state: ITradeState,
         e: OrderDetails,
@@ -446,8 +515,9 @@ export class ProcessPendingState {
 
                     // 2. Place market exit order (opposite side) to close position
                     const closeSide: OrderSide = e.side === "buy" ? "sell" : "buy";
+                    let closeOrderRes: any = null;
                     try {
-                        await adapter.placeEntryOrder(
+                        closeOrderRes = await adapter.placeEntryOrder(
                             sym,
                             closeSide,
                             Number(s.quantity || e.size)
@@ -456,8 +526,13 @@ export class ProcessPendingState {
                         logger.error(`[TimeBasedExit] Error placing market exit order for ${sym}`, { err });
                     }
 
-                    // 3. Mark state as closed / settled
-                    return await this.processClosedPosition(s, Number(e.paid_commission || 0), 0, 1.0, logContext);
+                    // 3. Mark state as closed / settled using exact market exit order details
+                    return await this.processTimeBasedClosedPosition(
+                        s,
+                        closeOrderRes,
+                        Number(e.paid_commission || 0),
+                        logContext
+                    );
                 }
             }
 
