@@ -127,7 +127,7 @@ export class OrderExecutor {
         }
 
         tradeLogger.info(
-            `[State] Trade state updated successfully: Outcome=pending, Level=${updatedState.currentLevel}`
+            `[State] Trade state updated successfully: Outcome=pending, Level=${updatedState.currentLevel}, BreakoutTF=${updatedState.breakoutTimeframe}`
         );
 
         tradeLogger.info(`✓ TRADE COMPLETED SUCCESSFULLY\n`);

@@ -715,26 +715,40 @@ export class ProcessPendingState {
         }
 
         const entryCommission = Number(e.paid_commission || 0);
-        const totalFees = s.cumulativeFees + entryCommission + exitCommission;
+        const incrementalFees = entryCommission + exitCommission;
+        const totalFees = s.cumulativeFees + incrementalFees;
         const entryPrice = Number(e.average_fill_price || e.limit_price || s.entryPrice || currentPrice);
 
         const isBuy = e.side === "buy";
         const priceDiff = isBuy ? exitPrice - entryPrice : entryPrice - exitPrice;
         const rawPnl = (priceDiff * qty * cfg.LOT_SIZE);
         const netPnl = s.pnl + rawPnl;
+        const netDebt = rawPnl - incrementalFees;
 
-        return await this.handleLoss(
-            s,
-            netPnl - totalFees,
-            netPnl,
-            totalFees,
-            exitPrice,
-            rawPnl,
-            exitCommission + entryCommission,
-            multiplier,
-            exitPrice,
-            logContext
-        );
+        logger.info(`[CandleLimitExit] Trade outcome calculated for ${s.symbol}: Raw PnL: ${rawPnl.toFixed(4)}, Total Fees: ${totalFees.toFixed(4)}, Net Debt/PnL: ${netDebt.toFixed(4)}, Outcome: ${netDebt >= 0 ? "WIN" : "LOSS"}`);
+
+        return netDebt >= 0
+            ? await this.handleWin(
+                s,
+                netPnl,
+                totalFees,
+                rawPnl,
+                incrementalFees,
+                exitPrice,
+                logContext
+            )
+            : await this.handleLoss(
+                s,
+                netDebt,
+                netPnl,
+                totalFees,
+                exitPrice,
+                rawPnl,
+                incrementalFees,
+                multiplier,
+                exitPrice,
+                logContext
+            );
     }
 
     static async handleClosedEntryOrder(
