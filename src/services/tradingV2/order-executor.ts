@@ -114,6 +114,7 @@ export class OrderExecutor {
                     cumulativeFees: state.cumulativeFees,
                     allTimePnl: state.allTimePnl,
                     allTimeFees: state.allTimeFees,
+                    breakoutTimeframe: mtf.breakoutTimeframe || c.TIMEFRAME,
                     lastTradeSettledAt: new Date()
                 }
             },

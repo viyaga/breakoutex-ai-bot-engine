@@ -1,10 +1,9 @@
 import { TradingV2 } from ".";
 import { ITradeState, TradeState } from "../../models/tradeState.model";
-
 import { TradingConfig } from "./config";
 import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import { tradingCycleErrorLogger, tradesLogger, getContextualLogger } from "./logger";
-import { Candle, OrderDetails, TargetCandle } from "./type";
+import { Candle, OrderDetails, OrderSide, TargetCandle } from "./type";
 import { Utils } from "./utils";
 import { TripleTFResult } from "./market-detector/multi-timeframe";
 
@@ -587,6 +586,157 @@ export class ProcessPendingState {
         }
     }
 
+    static async evaluateCandleLimitAndReversal(
+        sym: string,
+        s: ITradeState,
+        e: OrderDetails,
+        mtf: TripleTFResult,
+        currentPrice: number,
+        logContext?: any
+    ): Promise<{ shouldExit: boolean; reason: string }> {
+        const logger = getContextualLogger(tradesLogger, logContext);
+        const cfg = TradingConfig.getConfig();
+
+        if (!cfg.IS_CANDLE_LIMIT_EXIT_ENABLED) {
+            return { shouldExit: false, reason: "Candle limit exit disabled" };
+        }
+
+        // 1. Determine breakout timeframe (fallback to entry TIMEFRAME if not recorded)
+        const breakoutTf = s.breakoutTimeframe || mtf.breakoutTimeframe || cfg.TIMEFRAME || "5m";
+        const maxCandlesMap = cfg.MAX_HOLDING_CANDLES_MAP || { "5m": 12, "15m": 8, "1h": 6, "4h": 4 };
+        const maxAllowedCandles = maxCandlesMap[breakoutTf] ?? 12;
+
+        // 2. Calculate elapsed holding time & candle count using entryFilledAt (or createdAt as fallback)
+        const fillTimeMs = s.entryFilledAt
+            ? new Date(s.entryFilledAt).getTime()
+            : s.createdAt
+                ? new Date(s.createdAt).getTime()
+                : Date.now();
+        const tfDurationMs = Utils.getTimeframeDurationMs(breakoutTf);
+        const elapsedMs = Date.now() - fillTimeMs;
+        const elapsedCandles = Math.floor(elapsedMs / tfDurationMs);
+
+        logger.info(`[CandleLimitCheck] ${sym} | Breakout TF: ${breakoutTf} | Elapsed Candles: ${elapsedCandles}/${maxAllowedCandles} (${(elapsedMs / 60000).toFixed(1)} mins) | Filled At: ${s.entryFilledAt ? new Date(s.entryFilledAt).toISOString() : "createdAt"}`);
+
+        // 3. HARD SAFETY CAP: If position reaches 2x max candles, force exit regardless of profit to prevent stagnation
+        const hardMaxCandles = maxAllowedCandles * 2;
+        if (elapsedCandles >= hardMaxCandles) {
+            const hardCapReason = `Absolute hard holding limit (${hardMaxCandles} candles / ${(elapsedMs / 60000).toFixed(0)} mins) reached on ${breakoutTf}`;
+            logger.warn(`[CandleLimitExit] HARD CAP EXCEEDED for ${sym} | Reason: ${hardCapReason}`);
+            return { shouldExit: true, reason: hardCapReason };
+        }
+
+        if (elapsedCandles < maxAllowedCandles) {
+            return { shouldExit: false, reason: `Elapsed candles (${elapsedCandles}) within limit (${maxAllowedCandles})` };
+        }
+
+        // 4. Candle limit reached -> Check if market has REVERSED, lost momentum, or score decayed
+        const posSide = e.side; // "buy" or "sell"
+        const entryPrice = s.entryPrice || Number(e.average_fill_price || e.limit_price || currentPrice);
+        const mtfDirection = mtf.direction; // "BUY", "SELL", or "NONE"
+
+        let isReversalDetected = false;
+        let reversalReason = "";
+
+        // Check A: Price Reversal
+        if (posSide === "buy") {
+            if (currentPrice < entryPrice) {
+                isReversalDetected = true;
+                reversalReason = `Mark price (${currentPrice}) dropped below entry price (${entryPrice}) after ${elapsedCandles} candles on ${breakoutTf}`;
+            } else if (mtfDirection === "SELL") {
+                isReversalDetected = true;
+                reversalReason = `MTF signal flipped to SELL after ${elapsedCandles} candles on ${breakoutTf}`;
+            }
+        } else if (posSide === "sell") {
+            if (currentPrice > entryPrice) {
+                isReversalDetected = true;
+                reversalReason = `Mark price (${currentPrice}) rose above entry price (${entryPrice}) after ${elapsedCandles} candles on ${breakoutTf}`;
+            } else if (mtfDirection === "BUY") {
+                isReversalDetected = true;
+                reversalReason = `MTF signal flipped to BUY after ${elapsedCandles} candles on ${breakoutTf}`;
+            }
+        }
+
+        // Check B: Score Decay / Loss of Momentum
+        if (!isReversalDetected && (mtf.finalScore < 50 || mtf.confirmationProbability < 40)) {
+            isReversalDetected = true;
+            reversalReason = `MTF score decayed below threshold (FinalScore: ${mtf.finalScore}, ConfProb: ${mtf.confirmationProbability}) after ${elapsedCandles} candles on ${breakoutTf}`;
+        }
+
+        if (isReversalDetected) {
+            logger.warn(`[CandleLimitExit] REVERSAL DETECTED for ${sym} (${posSide.toUpperCase()}) | Reason: ${reversalReason}`);
+            return { shouldExit: true, reason: reversalReason };
+        }
+
+        logger.info(`[CandleLimitCheck] ${sym} (${posSide.toUpperCase()}) | Max candles (${maxAllowedCandles}) reached, but trade is moving in favorable direction. Position maintained.`);
+        return { shouldExit: false, reason: "Trade in favorable direction" };
+    }
+
+    static async executeCandleLimitExit(
+        s: ITradeState,
+        e: OrderDetails,
+        currentPrice: number,
+        multiplier: number,
+        reason: string,
+        logContext?: any
+    ): Promise<ITradeState> {
+        const logger = getContextualLogger(tradesLogger, logContext);
+        const cfg = TradingConfig.getConfig();
+        const adapter = ExchangeAdapterFactory.getAdapter();
+
+        logger.info(`[CandleLimitExit] Executing market close for ${s.symbol} due to candle limit reversal. Reason: ${reason}`);
+
+        try {
+            await adapter.cancelStopOrders({
+                product_id: cfg.PRODUCT_ID,
+                cancel_limit_orders: true,
+            });
+            logger.info(`[CandleLimitExit] Cancelled open TP/SL orders for ${s.symbol}`);
+        } catch (err) {
+            logger.warn(`[CandleLimitExit] Error cancelling bracket orders: ${err}`);
+        }
+
+        const exitSide: OrderSide = e.side === "buy" ? "sell" : "buy";
+        const qty = Number(s.quantity || e.size || 1);
+
+        let exitCommission = 0;
+        let exitPrice = currentPrice;
+
+        try {
+            const exitOrder = await adapter.placeEntryOrder(s.symbol, exitSide, qty);
+
+            if (exitOrder && exitOrder.result) {
+                exitPrice = Number(exitOrder.result.average_fill_price || currentPrice);
+                exitCommission = Number(exitOrder.result.paid_commission || 0);
+            }
+            logger.info(`[CandleLimitExit] Market exit order executed for ${s.symbol}. Exit Price: ${exitPrice}, Commission: ${exitCommission}`);
+        } catch (err) {
+            logger.error(`[CandleLimitExit] Failed to execute market exit order for ${s.symbol}: ${err}`);
+        }
+
+        const entryCommission = Number(e.paid_commission || 0);
+        const totalFees = s.cumulativeFees + entryCommission + exitCommission;
+        const entryPrice = Number(e.average_fill_price || e.limit_price || s.entryPrice || currentPrice);
+
+        const isBuy = e.side === "buy";
+        const priceDiff = isBuy ? exitPrice - entryPrice : entryPrice - exitPrice;
+        const rawPnl = (priceDiff * qty * cfg.LOT_SIZE);
+        const netPnl = s.pnl + rawPnl;
+
+        return await this.handleLoss(
+            s,
+            netPnl - totalFees,
+            netPnl,
+            totalFees,
+            exitPrice,
+            rawPnl,
+            exitCommission + entryCommission,
+            multiplier,
+            exitPrice,
+            logContext
+        );
+    }
+
     static async handleClosedEntryOrder(
         sym: string,
         s: ITradeState,
@@ -632,6 +782,13 @@ export class ProcessPendingState {
 
             if (tpPrice !== null) updateData.tpPrice = tpPrice;
             if (slPrice !== null) updateData.slPrice = slPrice;
+            if (!s.entryFilledAt) updateData.entryFilledAt = new Date();
+
+            // 🔥 CANDLE LIMIT & REVERSAL EXIT CHECK
+            const limitCheck = await this.evaluateCandleLimitAndReversal(sym, s, e, mtf, currentPrice, logContext);
+            if (limitCheck.shouldExit) {
+                return this.executeCandleLimitExit(s, e, currentPrice, multiplier, limitCheck.reason, logContext);
+            }
 
             // Optimization: Only update if anything meaningful changed
             const isUnchanged =

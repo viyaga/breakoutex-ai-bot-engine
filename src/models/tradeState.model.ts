@@ -36,6 +36,8 @@ export interface ITradeState {
     confirmationProbability?: number | null;
     structureProbability?: number | null;
     tradingMode?: string | null;
+    breakoutTimeframe?: string | null;
+    entryFilledAt?: Date | null;
     lastTradeSettledAt?: Date | null;
     status: 'open' | 'closed';
     updatedAt: Date;
@@ -85,6 +87,8 @@ const TradeStateSchema: Schema = new Schema(
         confirmationProbability: { type: Number, default: null },
         structureProbability: { type: Number, default: null },
         tradingMode: { type: String, default: null },
+        breakoutTimeframe: { type: String, default: null },
+        entryFilledAt: { type: Date, default: null },
     },
     {
         timestamps: true

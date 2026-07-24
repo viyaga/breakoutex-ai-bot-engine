@@ -15,6 +15,7 @@ export interface TripleTFResult {
     decision: TradeDecision;
     isAllowed: boolean;
     direction: "BUY" | "SELL" | "NONE";
+    breakoutTimeframe?: string;
 
     // 🔥 NEW
     tp: number;
@@ -70,8 +71,19 @@ export class MultiTimeframeAlignment {
             : breakout.direction;
         const entryScore = breakout.score;
 
-        // Evaluate breakout trade on confirmation timeframe
+        // Evaluate breakout trade on confirmation and structure timeframes
         const confirmationBreakout = evaluateBreakoutTrade(confirmationCandles, confirmationTarget, confirmationConfig);
+        const structureBreakout = evaluateBreakoutTrade(structureCandles, structureTarget, structureConfig);
+
+        // 🔥 HIGHEST TIMEFRAME BREAKOUT PRIORITY: 1h > 15m > 5m
+        let breakoutTimeframe: string = entryConfig.TIMEFRAME || "5m";
+        if (structureBreakout.direction !== "NONE") {
+            breakoutTimeframe = entryConfig.STRUCTURE_TIMEFRAME || "1h";
+        } else if (confirmationBreakout.direction !== "NONE") {
+            breakoutTimeframe = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
+        } else if (breakout.direction !== "NONE") {
+            breakoutTimeframe = entryConfig.TIMEFRAME || "5m";
+        }
 
         // Blend confirmation breakout score with general confirmation probability
         // 🔥 Prioritize 1h Breakout: Increased weight from 0.60 to 0.80
@@ -85,6 +97,8 @@ export class MultiTimeframeAlignment {
         marketDetectorLogger.info(`${evalTag} Sub-scores for ${entryConfig.SYMBOL}: Entry=${entryScore}, Confirmation=${confirmationProbability} (BO:${confirmationBreakout.score}, Prob:${rawConfirmationProbability}), Structure=${structureProbability}`);
         marketDetectorLogger.debug(`${evalTag} Breakout details for ${entryConfig.SYMBOL}: 5m Entry Dir=${breakout.direction}, Score=${breakout.score}, Reason=${breakout.reason}`);
         marketDetectorLogger.debug(`${evalTag} 15m Confirmation Breakout details: Dir=${confirmationBreakout.direction}, Score=${confirmationBreakout.score}, Reason=${confirmationBreakout.reason}`);
+        marketDetectorLogger.debug(`${evalTag} 1h Structure Breakout details: Dir=${structureBreakout.direction}, Score=${structureBreakout.score}, Reason=${structureBreakout.reason}`);
+        marketDetectorLogger.info(`${evalTag} ${entryConfig.SYMBOL}: Active Breakout Timeframe identified: ${breakoutTimeframe} (Priority: 1h > 15m > 5m)`);
 
         const symbol = entryConfig.SYMBOL;
 
@@ -122,6 +136,7 @@ export class MultiTimeframeAlignment {
                 decision: "SKIP",
                 isAllowed: false,
                 direction: "NONE",
+                breakoutTimeframe,
                 tp: 0,
                 sl: 0,
                 rr: 0,
@@ -314,6 +329,7 @@ export class MultiTimeframeAlignment {
             decision,
             isAllowed,
             direction,
+            breakoutTimeframe,
             tp,
             sl,
             rr,

@@ -122,6 +122,8 @@ export class BulkSyncService {
             exitPrice: 1,
             dailyPnl: 1,
             tradeAmountInUse: 1,
+            breakoutTimeframe: 1,
+            entryFilledAt: 1,
             createdAt: 1,
             updatedAt: 1
         })
