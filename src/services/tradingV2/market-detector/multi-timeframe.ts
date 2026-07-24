@@ -400,28 +400,22 @@ export class MultiTimeframeAlignment {
                 marketDetectorLogger.warn(`[ATR-Filter] ${entryConfig.SYMBOL} ATR% is abnormally high (${atrPercent.toFixed(4)}%), market shows extreme volatility`);
             }
 
-            /* ================= STRUCTURE SL + ATR VOLATILITY BUFFER ================= */
-            // Buffer of 0.5 * ATR below swing low (BUY) or above swing high (SELL)
-            const atrBuffer = 0.5 * atrDistance;
+            /* ================= CANDLE LOW / HIGH SL ================= */
             let structSl: number;
 
             if (direction === "BUY") {
                 const rawSwingLow = sourceCandle.low;
-                const bufferedSl = rawSwingLow - atrBuffer;
-                const pctBufferSl = sourceCandle.low * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
                 structSl = rawSwingLow;
-                sl = Math.min(bufferedSl, pctBufferSl);
+                sl = rawSwingLow * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
             } else {
                 const rawSwingHigh = sourceCandle.high;
-                const bufferedSl = rawSwingHigh + atrBuffer;
-                const pctBufferSl = sourceCandle.high * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
                 structSl = rawSwingHigh;
-                sl = Math.max(bufferedSl, pctBufferSl);
+                sl = rawSwingHigh * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
             }
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
             marketDetectorLogger.info(
-                `[DynamicSL] ${entryConfig.SYMBOL} ATR%=${atrPercent.toFixed(4)}% | Swing ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | ATR Buffer=${atrBuffer.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} (0.5x ATR) | Final SL=${sl}`
+                `[CandleSL] ${entryConfig.SYMBOL} | Candle ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
             );
 
             /* ================= SL CROSSING SAFETIES ================= */
