@@ -478,9 +478,9 @@ export class MultiTimeframeAlignment {
             const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5;
             const maxTpPerc = entryConfig.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
 
-            // Scale multiplier: 50 score -> 1.0x ATR, 100 score -> 2.0x ATR
-            const scoreFactor = Math.max(50, Math.min(100, finalScore));
-            const multiplier = 1.0 + ((scoreFactor - 50) / 50) * 1.0;
+            // Scale multiplier: 70 score -> 1.0x ATR, 80 score -> 1.5x ATR, 90 score -> 2.0x ATR
+            const scoreFactor = Math.max(70, Math.min(90, finalScore));
+            const multiplier = 1.0 + ((scoreFactor - 70) / 20) * 1.0;
 
             const rawTpPercent = atrPercent * multiplier;
 

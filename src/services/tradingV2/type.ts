@@ -37,6 +37,8 @@ export interface ConfigType {
     MIN_TP_PRICE_MOVEMENT_PERCENT?: number;
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number;
     MAX_SL_PRICE_MOVEMENT_PERCENT?: number;
+    IS_CANDLE_LIMIT_EXIT_ENABLED?: boolean;
+    MAX_HOLDING_CANDLES_MAP?: Record<string, number>;
     ESTIMATED_FEE_PERCENT: number;
     IS_WEEKEND_SAFETY_ENABLED: boolean;
     EXCHANGE?: string;
@@ -306,4 +308,6 @@ export interface ActiveSubscribedBot {
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number
     IS_WEEKEND_SAFETY_ENABLED?: boolean
+    IS_CANDLE_LIMIT_EXIT_ENABLED?: boolean
+    MAX_HOLDING_CANDLES_MAP?: Record<string, number>
 }

@@ -4,7 +4,7 @@ import { ITradeState, TradeState } from "../../models/tradeState.model";
 import { TradingConfig } from "./config";
 import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import { tradingCycleErrorLogger, tradesLogger, getContextualLogger } from "./logger";
-import { Candle, OrderDetails, TargetCandle } from "./type";
+import { Candle, OrderDetails, OrderSide, TargetCandle } from "./type";
 import { Utils } from "./utils";
 import { TripleTFResult } from "./market-detector/multi-timeframe";
 
@@ -398,6 +398,69 @@ export class ProcessPendingState {
 
             // 🔍 Query TP and SL order details to check if either was manually cancelled
             const adapter = ExchangeAdapterFactory.getAdapter();
+
+            /* ================= CANDLE LIMIT / TIME-BASED EXIT CHECK ================= */
+            const cfg = TradingConfig.getConfig();
+            const isCandleLimitExitEnabled = cfg.IS_CANDLE_LIMIT_EXIT_ENABLED ?? true;
+
+            if (isCandleLimitExitEnabled) {
+                const timeframe = cfg.TIMEFRAME || "5m";
+                const timeframeMinutesMap: Record<string, number> = {
+                    "1m": 1,
+                    "3m": 3,
+                    "5m": 5,
+                    "15m": 15,
+                    "30m": 30,
+                    "1h": 60,
+                    "2h": 120,
+                    "4h": 240,
+                    "1d": 1440
+                };
+                const timeframeMinutes = timeframeMinutesMap[timeframe] || 5;
+
+                const maxCandlesMap = cfg.MAX_HOLDING_CANDLES_MAP || {
+                    "5m": 12,
+                    "15m": 8,
+                    "1h": 6,
+                    "4h": 4
+                };
+                const maxHoldingCandles = maxCandlesMap[timeframe] || 8;
+
+                // Entry timestamp: use trade creation/update time
+                const entryTimeMs = s.createdAt ? new Date(s.createdAt).getTime() : Date.now();
+                const elapsedMs = Math.max(0, Date.now() - entryTimeMs);
+                const elapsedMinutes = elapsedMs / (60 * 1000);
+                const elapsedCandles = Math.floor(elapsedMinutes / timeframeMinutes);
+
+                logger.info(`[CandleLimitCheck] ${sym} | Timeframe: ${timeframe} (${timeframeMinutes}m) | Open for ${elapsedMinutes.toFixed(1)} mins (~${elapsedCandles} candles) | Max Limit: ${maxHoldingCandles} candles`);
+
+                if (elapsedCandles >= maxHoldingCandles) {
+                    logger.warn(`[TimeBasedExit] ${sym}: Position open for ${elapsedCandles} candles (${elapsedMinutes.toFixed(1)} mins), exceeding max limit of ${maxHoldingCandles} candles. Closing position at market due to stalled momentum.`);
+
+                    // 1. Cancel active SL and TP bracket orders
+                    try {
+                        await adapter.cancelStopOrders({ product_id: cfg.PRODUCT_ID }, logContext);
+                    } catch (err) {
+                        logger.error(`[TimeBasedExit] Failed to cancel bracket orders for ${sym}`, { err });
+                    }
+
+                    // 2. Place market exit order (opposite side) to close position
+                    const closeSide: OrderSide = e.side === "buy" ? "sell" : "buy";
+                    try {
+                        await adapter.placeEntryOrder(
+                            sym,
+                            closeSide,
+                            Number(s.quantity || e.size)
+                        );
+                    } catch (err) {
+                        logger.error(`[TimeBasedExit] Error placing market exit order for ${sym}`, { err });
+                    }
+
+                    // 3. Mark state as closed / settled
+                    return await this.processClosedPosition(s, Number(e.paid_commission || 0), 0, 1.0, logContext);
+                }
+            }
+
             const slOrder = s.stopLossOrderId ? await adapter.getOrderDetails(s.stopLossOrderId) : null;
             const tpOrder = s.takeProfitOrderId ? await adapter.getOrderDetails(s.takeProfitOrderId) : null;
 

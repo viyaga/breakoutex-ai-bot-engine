@@ -39,6 +39,13 @@ export class TradingConfig {
         CONFIRMATION_LOOKBACK: 36,
         ESTIMATED_FEE_PERCENT: 0.1,
         IS_WEEKEND_SAFETY_ENABLED: true,
+        IS_CANDLE_LIMIT_EXIT_ENABLED: true,
+        MAX_HOLDING_CANDLES_MAP: {
+            "5m": 12,
+            "15m": 8,
+            "1h": 6,
+            "4h": 4
+        },
         EXCHANGE: "delta",
         MIN_ENTRY_SCORE: 0,
         MIN_CONFIRMATION_SCORE: 60,
