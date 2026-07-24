@@ -449,7 +449,7 @@ export class MultiTimeframeAlignment {
             const netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
             /* ================= DYNAMIC TP (ATR BASED) ================= */
-            const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.7;
+            const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5;
             const maxTpPerc = entryConfig.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
 
             // Scale multiplier: 50 score -> 1.0x ATR, 100 score -> 2.0x ATR

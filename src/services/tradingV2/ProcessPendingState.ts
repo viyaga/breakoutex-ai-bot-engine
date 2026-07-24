@@ -293,7 +293,7 @@ export class ProcessPendingState {
             const side = e.side || state.side || "buy";
             const isBuy = side.toLowerCase() === "buy";
 
-            const minTpPerc = c.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.7;
+            const minTpPerc = c.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5;
             const maxTpPerc = c.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
             const tpPercent = (minTpPerc + maxTpPerc) / 2;
 
