@@ -237,6 +237,7 @@ export class MultiTimeframeAlignment {
             isSlAlreadyCrossed,
             crossedReason,
             isExceededMovementLimit,
+            isTpBelowMin,
             structSlPerc,
             confSlPerc
         } = levels;
@@ -248,7 +249,7 @@ export class MultiTimeframeAlignment {
             ? tp > 0 && sl > 0
             : entryConfig.IS_TESTING
                 ? tp > 0 && sl > 0
-                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && rr >= minRr;
+                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && !isTpBelowMin && rr >= minRr;
 
         if (entryConfig.IS_TESTING && isAllowed && decision === "SKIP") {
             decision = "TEST_TRADE";
@@ -285,6 +286,10 @@ export class MultiTimeframeAlignment {
                 if (isExceededMovementLimit) {
                     warnings.push(`Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
                 }
+                if (isTpBelowMin) {
+                    const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5;
+                    warnings.push(`TP percentage below minimum: TP%=${tpPerc.toFixed(2)}% (Min:${minTpPerc}%)`);
+                }
                 if (!isPassingMinScores) {
                     warnings.push(`Individual timeframe score below minimum: Entry=${entryScore} (Min:${minEntry}), Confirmation=${confirmationProbability} (Min:${minConf}), Structure=${structureProbability} (Min:${minStruct})`);
                 }
@@ -302,6 +307,8 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss boundary already crossed before entry: ${crossedReason}`);
         } else if (isExceededMovementLimit) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
+        } else if (isTpBelowMin) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | TP movement percentage below minimum: TP%=${tpPerc.toFixed(2)}% (Min:${entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5}%)`);
         } else if (rr < minRr) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Risk-Reward ratio below minimum: RR=${rr.toFixed(2)} (Min:${minRr})`);
         }
@@ -349,6 +356,7 @@ export class MultiTimeframeAlignment {
         isSlAlreadyCrossed: boolean;
         crossedReason: string;
         isExceededMovementLimit: boolean;
+        isTpBelowMin: boolean;
         structSlPerc: number;
         confSlPerc: number;
     } {
@@ -364,6 +372,7 @@ export class MultiTimeframeAlignment {
         let isSlAlreadyCrossed = false;
         let crossedReason = "";
         let isExceededMovementLimit = false;
+        let isTpBelowMin = false;
         const leverage = entryConfig.LEVERAGE;
 
         if (entryPrice > 0) {
@@ -418,6 +427,23 @@ export class MultiTimeframeAlignment {
                 `[CandleSL] ${entryConfig.SYMBOL} | Candle ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
             );
 
+            /* ================= MAX SL PRICE MOVEMENT CAP ================= */
+            const maxSlPerc = entryConfig.MAX_SL_PRICE_MOVEMENT_PERCENT ?? 1.5;
+            let initialSlPerc = entryPrice > 0 ? (Math.abs(entryPrice - sl) / entryPrice) * 100 : 0;
+            if (initialSlPerc > maxSlPerc) {
+                const initialSl = sl;
+                if (direction === "BUY") {
+                    sl = entryPrice * (1 - maxSlPerc / 100);
+                } else {
+                    sl = entryPrice * (1 + maxSlPerc / 100);
+                }
+                sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                const adjustedSlPerc = entryPrice > 0 ? (Math.abs(entryPrice - sl) / entryPrice) * 100 : 0;
+                marketDetectorLogger.info(
+                    `[MaxSL-Cap] ${entryConfig.SYMBOL}: Initial SL distance (${initialSlPerc.toFixed(2)}%) exceeded MAX_SL_PRICE_MOVEMENT_PERCENT (${maxSlPerc}%). Adjusted SL: ${initialSl} -> ${sl} (${adjustedSlPerc.toFixed(2)}% distance)`
+                );
+            }
+
             /* ================= SL CROSSING SAFETIES ================= */
             if (direction === "BUY") {
                 if (entryPrice <= sl) {
@@ -440,13 +466,13 @@ export class MultiTimeframeAlignment {
             /* ================= METRICS & RR (PRELIMINARY) ================= */
             slLimit = sl;
 
-            const riskPriceDist = Math.abs(entryPrice - sl);
+            let riskPriceDist = Math.abs(entryPrice - sl);
 
             // Include Estimated Fees in RR
             const feePercent = entryConfig.ESTIMATED_FEE_PERCENT / 100;
             const entryFee = entryPrice * (feePercent / 2);
-            const exitFeeSl = sl * (feePercent / 2);
-            const netRisk = riskPriceDist + (entryFee + exitFeeSl);
+            let exitFeeSl = sl * (feePercent / 2);
+            let netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
             /* ================= DYNAMIC TP (ATR BASED) ================= */
             const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5;
@@ -458,8 +484,13 @@ export class MultiTimeframeAlignment {
 
             const rawTpPercent = atrPercent * multiplier;
 
-            // Clamp tpPercent between config bounds
-            const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
+            if (rawTpPercent < minTpPerc) {
+                isTpBelowMin = true;
+                marketDetectorLogger.warn(`[DynamicTP] ${entryConfig.SYMBOL}: Raw ATR TP% (${rawTpPercent.toFixed(4)}%) is below MIN_TP_PRICE_MOVEMENT_PERCENT (${minTpPerc.toFixed(2)}%). Trade will be stopped/skipped.`);
+            }
+
+            // Clamp tpPercent max bound without forcing min bound upwards
+            const tpPercent = Math.min(maxTpPerc, rawTpPercent);
 
             marketDetectorLogger.info(`[DynamicTP] ${entryConfig.SYMBOL} Volatility Analysis: ATR%=${atrPercent.toFixed(4)}% (Timeframe: ${sourceCandles === structureCandles ? 'Structure' : 'Confirmation'}) | Score=${finalScore} | Multiplier=${multiplier.toFixed(2)}x | Raw TP%=${rawTpPercent.toFixed(4)}% | Config Limits=[${minTpPerc.toFixed(2)}%, ${maxTpPerc.toFixed(2)}%] | Final TP%=${tpPercent.toFixed(4)}%`);
 
@@ -497,53 +528,59 @@ export class MultiTimeframeAlignment {
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 : 0;
 
-            /* ================= FORCED TP ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
+            if (tpPerc < minTpPerc) {
+                isTpBelowMin = true;
+            }
+
+            /* ================= FORCED SL ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
             const targetMinRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.0);
-            if (rr < targetMinRr && !isSlAlreadyCrossed && !isExceededMovementLimit && netRisk > 0) {
+            if (rr < targetMinRr && !isSlAlreadyCrossed && !isExceededMovementLimit && !isTpBelowMin && netReward > 0) {
                 const initialRr = rr;
-                const initialTp = tp;
-                const requiredNetReward = targetMinRr * netRisk;
+                const initialSl = sl;
+                const maxAllowedNetRisk = netReward / targetMinRr;
 
-                let forcedTp: number;
+                let forcedSl: number;
                 if (direction === "BUY") {
-                    forcedTp = (requiredNetReward + entryPrice * (1 + feePercent / 2)) / (1 - feePercent / 2);
+                    forcedSl = (entryPrice * (1 + feePercent / 2) - maxAllowedNetRisk) / (1 - feePercent / 2);
                 } else {
-                    forcedTp = (entryPrice * (1 - feePercent / 2) - requiredNetReward) / (1 + feePercent / 2);
+                    forcedSl = (maxAllowedNetRisk + entryPrice * (1 - feePercent / 2)) / (1 + feePercent / 2);
                 }
 
-                tp = parseFloat(forcedTp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                sl = parseFloat(forcedSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                slLimit = sl;
 
-                // Recalculate baseTp & tpLimit based on forced tp
-                baseTp = tp / tpTriggerFactor;
-                const rawTpLimitForced = baseTp * tpLimitFactor;
-                if (rawTpLimitForced <= 0) {
-                    tpLimit = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                } else {
-                    tpLimit = parseFloat(rawTpLimitForced.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                }
-
-                // Recalculate metrics with forced TP
-                rewardPriceDist = Math.abs(tp - entryPrice);
-                exitFeeTp = tp * (feePercent / 2);
-                const forcedNetReward = rewardPriceDist - (entryFee + exitFeeTp);
-                rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
+                // Recalculate metrics with forced SL
+                riskPriceDist = Math.abs(entryPrice - sl);
+                exitFeeSl = sl * (feePercent / 2);
+                netRisk = riskPriceDist + (entryFee + exitFeeSl);
+                rr = netRisk > 0 ? netReward / netRisk : 0;
 
                 // Adjust by tick step if decimal rounding placed rr slightly below targetMinRr
                 const tick = 1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES);
                 let loopCount = 0;
-                while (rr < targetMinRr && loopCount < 10) {
-                    tp = parseFloat((tp + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                    rewardPriceDist = Math.abs(tp - entryPrice);
-                    exitFeeTp = tp * (feePercent / 2);
-                    const currentNetReward = rewardPriceDist - (entryFee + exitFeeTp);
-                    rr = netRisk > 0 ? currentNetReward / netRisk : 0;
+                while (rr < targetMinRr && loopCount < 20) {
+                    sl = parseFloat((sl + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    slLimit = sl;
+                    riskPriceDist = Math.abs(entryPrice - sl);
+                    exitFeeSl = sl * (feePercent / 2);
+                    netRisk = riskPriceDist + (entryFee + exitFeeSl);
+                    rr = netRisk > 0 ? netReward / netRisk : 0;
                     loopCount++;
                 }
 
-                tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
+                // Verify safety after adjusting SL
+                if (direction === "BUY" && (sl <= 0 || sl >= entryPrice)) {
+                    isSlAlreadyCrossed = true;
+                    crossedReason = `Adjusted SL price (${sl}) is at or above entry price (${entryPrice})`;
+                } else if (direction === "SELL" && (sl <= 0 || sl <= entryPrice)) {
+                    isSlAlreadyCrossed = true;
+                    crossedReason = `Adjusted SL price (${sl}) is at or below entry price (${entryPrice})`;
+                }
+
+                slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 : 0;
 
                 marketDetectorLogger.info(
-                    `[DynamicTP] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < target min RR (${targetMinRr.toFixed(2)}). Forced TP by adjusting TP: initial TP=${initialTp} -> adjusted TP=${tp}, updated RR=${rr.toFixed(2)}`
+                    `[DynamicSL] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < target min RR (${targetMinRr.toFixed(2)}). Adjusted SL to meet min RR: initial SL=${initialSl} -> adjusted SL=${sl}, updated RR=${rr.toFixed(2)}`
                 );
             }
 
@@ -598,6 +635,7 @@ export class MultiTimeframeAlignment {
             isSlAlreadyCrossed,
             crossedReason,
             isExceededMovementLimit,
+            isTpBelowMin,
             structSlPerc,
             confSlPerc
         };

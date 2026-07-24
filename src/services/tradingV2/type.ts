@@ -36,6 +36,7 @@ export interface ConfigType {
     MIN_RR?: number;
     MIN_TP_PRICE_MOVEMENT_PERCENT?: number;
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number;
+    MAX_SL_PRICE_MOVEMENT_PERCENT?: number;
     ESTIMATED_FEE_PERCENT: number;
     IS_WEEKEND_SAFETY_ENABLED: boolean;
     EXCHANGE?: string;
@@ -299,6 +300,7 @@ export interface ActiveSubscribedBot {
     MIN_RR?: number
     MIN_TP_PRICE_MOVEMENT_PERCENT?: number
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number
+    MAX_SL_PRICE_MOVEMENT_PERCENT?: number
     MIN_FINAL_SCORE?: number
     DAILY_LOSS_LIMIT: number
     MAX_CONCURRENT_TRADES: number
