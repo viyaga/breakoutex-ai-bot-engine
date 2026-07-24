@@ -4,7 +4,7 @@ import { ITradeState, TradeState } from "../../models/tradeState.model";
 import { TradingConfig } from "./config";
 import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
 import { tradingCycleErrorLogger, tradesLogger, getContextualLogger } from "./logger";
-import { Candle, OrderDetails, OrderSide, TargetCandle } from "./type";
+import { Candle, OrderDetails, TargetCandle } from "./type";
 import { Utils } from "./utils";
 import { TripleTFResult } from "./market-detector/multi-timeframe";
 
@@ -257,75 +257,6 @@ export class ProcessPendingState {
         throw new Error("[processClosedPosition] Neither TP nor SL orders are filled/closed.");
     }
 
-    static async processTimeBasedClosedPosition(
-        s: ITradeState,
-        exitOrderRes: any,
-        entryCommission: number,
-        logContext?: any
-    ): Promise<ITradeState> {
-        const logger = getContextualLogger(tradesLogger, logContext);
-        const adapter = ExchangeAdapterFactory.getAdapter();
-
-        // 🔍 Fetch full exit order details if available
-        const exitOrderId = exitOrderRes?.id || exitOrderRes?.result?.id;
-        let exitOrderDetails: OrderDetails | null = null;
-        if (exitOrderId) {
-            try {
-                exitOrderDetails = await adapter.getOrderDetails(String(exitOrderId));
-            } catch (err) {
-                logger.warn(`[TimeBasedExitOutcome] Failed to fetch exit order details for ${exitOrderId}`, { err });
-            }
-        }
-
-        if (!exitOrderDetails && exitOrderRes?.result) {
-            exitOrderDetails = exitOrderRes.result;
-        }
-
-        const exitPrice = Number(
-            exitOrderDetails?.average_fill_price ||
-            exitOrderDetails?.limit_price ||
-            exitOrderRes?.result?.average_fill_price ||
-            exitOrderRes?.result?.limit_price ||
-            0
-        );
-
-        let incrementalPnl = Number(
-            exitOrderDetails?.meta_data?.pnl ||
-            exitOrderRes?.result?.meta_data?.pnl ||
-            0
-        );
-
-        // 📐 If exchange metadata PnL is 0 or unpopulated, calculate PnL manually from entry vs exit price
-        if (incrementalPnl === 0 && s.entryPrice && exitPrice > 0) {
-            const qty = Number(s.quantity || 1);
-            const lotSize = TradingConfig.getConfig().LOT_SIZE || 1;
-            if (s.side === "buy") {
-                incrementalPnl = (exitPrice - s.entryPrice) * qty * lotSize;
-            } else {
-                incrementalPnl = (s.entryPrice - exitPrice) * qty * lotSize;
-            }
-        }
-
-        const exitCommission = Number(
-            exitOrderDetails?.paid_commission ||
-            exitOrderRes?.result?.paid_commission ||
-            0
-        );
-        const incrementalFees = exitCommission + entryCommission;
-
-        const netPnl = s.pnl + incrementalPnl;
-        const fees = s.cumulativeFees + incrementalFees;
-        const netDebt = netPnl - fees;
-
-        logger.info(
-            `[TimeBasedExitOutcome] ${s.symbol} market exit settled. Exit Price: ${exitPrice}, Incremental PnL: ${incrementalPnl.toFixed(2)}, Incremental Fees: ${incrementalFees.toFixed(2)}, Net Debt: ${netDebt.toFixed(2)}`
-        );
-
-        return netDebt >= 0
-            ? await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext)
-            : await this.handleLoss(s, netDebt, netPnl, fees, exitPrice, incrementalPnl, incrementalFees, 1.0, exitPrice, logContext);
-    }
-
     static async placeCancelledBracketOrders(
         state: ITradeState,
         e: OrderDetails,
@@ -467,75 +398,6 @@ export class ProcessPendingState {
 
             // 🔍 Query TP and SL order details to check if either was manually cancelled
             const adapter = ExchangeAdapterFactory.getAdapter();
-
-            /* ================= CANDLE LIMIT / TIME-BASED EXIT CHECK ================= */
-            const cfg = TradingConfig.getConfig();
-            const isCandleLimitExitEnabled = cfg.IS_CANDLE_LIMIT_EXIT_ENABLED ?? true;
-
-            if (isCandleLimitExitEnabled) {
-                const timeframe = cfg.TIMEFRAME || "5m";
-                const timeframeMinutesMap: Record<string, number> = {
-                    "1m": 1,
-                    "3m": 3,
-                    "5m": 5,
-                    "15m": 15,
-                    "30m": 30,
-                    "1h": 60,
-                    "2h": 120,
-                    "4h": 240,
-                    "1d": 1440
-                };
-                const timeframeMinutes = timeframeMinutesMap[timeframe] || 5;
-
-                const maxCandlesMap = cfg.MAX_HOLDING_CANDLES_MAP || {
-                    "5m": 12,
-                    "15m": 8,
-                    "1h": 6,
-                    "4h": 4
-                };
-                const maxHoldingCandles = maxCandlesMap[timeframe] || 8;
-
-                // Entry timestamp: use trade creation/update time
-                const entryTimeMs = s.createdAt ? new Date(s.createdAt).getTime() : Date.now();
-                const elapsedMs = Math.max(0, Date.now() - entryTimeMs);
-                const elapsedMinutes = elapsedMs / (60 * 1000);
-                const elapsedCandles = Math.floor(elapsedMinutes / timeframeMinutes);
-
-                logger.info(`[CandleLimitCheck] ${sym} | Timeframe: ${timeframe} (${timeframeMinutes}m) | Open for ${elapsedMinutes.toFixed(1)} mins (~${elapsedCandles} candles) | Max Limit: ${maxHoldingCandles} candles`);
-
-                if (elapsedCandles >= maxHoldingCandles) {
-                    logger.warn(`[TimeBasedExit] ${sym}: Position open for ${elapsedCandles} candles (${elapsedMinutes.toFixed(1)} mins), exceeding max limit of ${maxHoldingCandles} candles. Closing position at market due to stalled momentum.`);
-
-                    // 1. Cancel active SL and TP bracket orders
-                    try {
-                        await adapter.cancelStopOrders({ product_id: cfg.PRODUCT_ID }, logContext);
-                    } catch (err) {
-                        logger.error(`[TimeBasedExit] Failed to cancel bracket orders for ${sym}`, { err });
-                    }
-
-                    // 2. Place market exit order (opposite side) to close position
-                    const closeSide: OrderSide = e.side === "buy" ? "sell" : "buy";
-                    let closeOrderRes: any = null;
-                    try {
-                        closeOrderRes = await adapter.placeEntryOrder(
-                            sym,
-                            closeSide,
-                            Number(s.quantity || e.size)
-                        );
-                    } catch (err) {
-                        logger.error(`[TimeBasedExit] Error placing market exit order for ${sym}`, { err });
-                    }
-
-                    // 3. Mark state as closed / settled using exact market exit order details
-                    return await this.processTimeBasedClosedPosition(
-                        s,
-                        closeOrderRes,
-                        Number(e.paid_commission || 0),
-                        logContext
-                    );
-                }
-            }
-
             const slOrder = s.stopLossOrderId ? await adapter.getOrderDetails(s.stopLossOrderId) : null;
             const tpOrder = s.takeProfitOrderId ? await adapter.getOrderDetails(s.takeProfitOrderId) : null;
 

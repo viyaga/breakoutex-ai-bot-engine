@@ -15,11 +15,11 @@ export class Data {
     private static PRODUCT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
     static async getOrCreateState(
-        tradingBotId: string, 
-        userId: string, 
-        sym: string, 
-        pid: number | string, 
-        multiplier: number = 0, 
+        tradingBotId: string,
+        userId: string,
+        sym: string,
+        pid: number | string,
+        multiplier: number = 0,
         currentPrice: number = 0
     ): Promise<ITradeState> {
         // 1. Try to find existing active (open) state
@@ -31,7 +31,7 @@ export class Data {
         if (st) {
             // Only update if fields actually differ (migration/sync safety)
             if (st.symbol !== sym || Number(st.productId) !== Number(pid) || st.userId !== userId) {
-                tradingCronLogger.info(`[Data] Updating active state metadata for ${sym}`, { 
+                tradingCronLogger.info(`[Data] Updating active state metadata for ${sym}`, {
                     old: { symbol: st.symbol, pid: st.productId, userId: st.userId },
                     new: { symbol: sym, pid, userId }
                 });
@@ -47,7 +47,7 @@ export class Data {
                 const lastClosed = await TradeState.findOne({ tradingBotId, status: 'closed' })
                     .sort({ updatedAt: -1 });
                 const isLoss = lastClosed?.tradeOutcome === 'loss';
-                
+
                 let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
                 if (isLoss && currentPrice > 0) {
                     const netDebt = (lastClosed?.pnl || 0) - (lastClosed?.cumulativeFees || 0);
@@ -56,7 +56,7 @@ export class Data {
                 } else {
                     quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
                 }
-                
+
                 if (!quantity || isNaN(quantity) || quantity <= 0) {
                     quantity = Math.max(1, TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1);
                 }
@@ -67,7 +67,7 @@ export class Data {
                     await st.save();
                 }
             }
-            
+
             tradingCronLogger.debug(`[Data] Loaded active state for ${sym}`, { id: st._id });
             return st;
         }
@@ -88,7 +88,7 @@ export class Data {
             lastUpdate.getUTCFullYear() === now.getUTCFullYear();
 
         const dailyPnl = isSameDay ? (lastClosed?.dailyPnl || 0) : 0;
-        
+
         const cfg = TradingConfig.getConfig();
         const dailyLossLimitUSD = cfg.CAPITAL_AMOUNT * (cfg.DAILY_LOSS_LIMIT / 100);
 

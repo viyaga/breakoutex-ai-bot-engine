@@ -27,6 +27,19 @@ export class SafetyValidator {
             return false;
         }
 
+        // ───────────────── CONSECUTIVE LOSS COOLDOWN CHECK ─────────────────
+        if (state?.cooldownUntil) {
+            const cooldownDate = new Date(state.cooldownUntil);
+            if (cooldownDate > now && !c.IS_TESTING) {
+                const remainingMs = cooldownDate.getTime() - now.getTime();
+                const remainingMins = Math.ceil(remainingMs / (60 * 1000));
+                skipLogger.warn(
+                    `[Cooldown] SKIP: Trading paused for ${symbol} after ${state.consecutiveLosses || 3} consecutive losses. ${remainingMins} minutes remaining in cooldown (Active until: ${cooldownDate.toLocaleString()})`
+                );
+                return false;
+            }
+        }
+
         // ───────────────── WEEKEND FILTER ─────────────────
         const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
         if (
