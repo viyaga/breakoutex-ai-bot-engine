@@ -627,12 +627,16 @@ export class ProcessPendingState {
         const elapsedMs = Date.now() - fillTimeMs;
         const elapsedCandles = Math.floor(elapsedMs / tfDurationMs);
 
-        logger.info(`[CandleLimitCheck] ${sym} | Breakout TF: ${breakoutTf} | Elapsed Candles: ${elapsedCandles}/${maxAllowedCandles} (${(elapsedMs / 60000).toFixed(1)} mins) | Filled At: ${s.entryFilledAt ? new Date(s.entryFilledAt).toISOString() : "createdAt"}`);
+        logger.info(
+            `[CandleLimitCheck] ${sym} | Breakout TF: ${breakoutTf} | Elapsed: ${elapsedCandles} candles (${(elapsedMs / 60000).toFixed(1)} mins) | ` +
+            `Limits: Normal=${maxAllowedCandles} candles, HardCap=${maxAllowedCandles * 2} candles | ` +
+            `Filled At: ${s.entryFilledAt ? new Date(s.entryFilledAt).toISOString() : (s.createdAt ? new Date(s.createdAt).toISOString() : "now")}`
+        );
 
         // 3. HARD SAFETY CAP: If position reaches 2x max candles, force exit regardless of profit to prevent stagnation
         const hardMaxCandles = maxAllowedCandles * 2;
         if (elapsedCandles >= hardMaxCandles) {
-            const hardCapReason = `Absolute hard holding limit (${hardMaxCandles} candles / ${(elapsedMs / 60000).toFixed(0)} mins) reached on ${breakoutTf}`;
+            const hardCapReason = `Absolute hard holding limit reached on ${breakoutTf} (Elapsed: ${elapsedCandles} candles / ${(elapsedMs / 60000).toFixed(0)} mins | Hard Cap: ${hardMaxCandles} candles | Normal Limit: ${maxAllowedCandles} candles)`;
             logger.warn(`[CandleLimitExit] HARD CAP EXCEEDED for ${sym} | Reason: ${hardCapReason}`);
             return { shouldExit: true, reason: hardCapReason };
         }
