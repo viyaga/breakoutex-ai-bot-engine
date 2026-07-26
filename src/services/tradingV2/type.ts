@@ -46,6 +46,12 @@ export interface ConfigType {
     MIN_CONFIRMATION_SCORE?: number;
     MIN_STRUCTURE_SCORE?: number;
     MIN_FINAL_SCORE?: number;
+    IS_MOMENTUM_INVALIDATION_EXIT_ENABLED?: boolean;
+    MOMENTUM_INVALIDATION_SCORE_THRESHOLD?: number;
+    MOMENTUM_INVALIDATION_CONFIRMATION_THRESHOLD?: number;
+    MOMENTUM_INVALIDATION_STRUCTURE_THRESHOLD?: number;
+    MOMENTUM_INVALIDATION_CONSECUTIVE_CYCLES?: number;
+    IS_TP_REDUCTION_ENABLED?: boolean;
 }
 
 export type MarketEvaluationMode = "structure" | "confirmation" | "entry";

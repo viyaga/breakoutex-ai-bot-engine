@@ -78,6 +78,7 @@ export class ProcessPendingState {
             confirmationProbability: null,
             structureProbability: null,
             tradingMode: null,
+            consecutiveLowMomentumCycles: 0,
         };
     }
 
@@ -432,8 +433,18 @@ export class ProcessPendingState {
             }
 
             const isTrailingSlEnabled = TradingConfig.getConfig().IS_TRAILING_SL_ENABLED ?? true;
+            const isTpReductionEnabled = TradingConfig.getConfig().IS_TP_REDUCTION_ENABLED ?? false;
             const sl = isTrailingSlEnabled ? mtf.sl : slPrice;
-            const tp = tpPrice || mtf.tp;
+            let tp = tpPrice || mtf.tp;
+
+            if (isTpReductionEnabled && mtf.tp && tpPrice) {
+                const isBuy = e.side === "buy";
+                const isTargetReduced = isBuy ? mtf.tp < tpPrice : mtf.tp > tpPrice;
+                if (isTargetReduced) {
+                    logger.info(`[PriceTrailing] Dynamic TP reduction enabled for ${sym}. Lowering target TP from ${tpPrice} to ${mtf.tp}`);
+                    tp = mtf.tp;
+                }
+            }
 
             let updateRes = { success: false, slPrice: slPrice, isSlSame: true, isSlReversed: false, isAlreadyTriggered: false };
             if (isTrailingSlEnabled) {
@@ -657,12 +668,6 @@ export class ProcessPendingState {
             }
         }
 
-        // Check B: Score Decay / Loss of Momentum
-        if (!isReversalDetected && (mtf.finalScore < 50 || mtf.confirmationProbability < 40)) {
-            isReversalDetected = true;
-            reversalReason = `MTF score decayed below threshold (FinalScore: ${mtf.finalScore}, ConfProb: ${mtf.confirmationProbability}) after ${elapsedCandles} candles on ${breakoutTf}`;
-        }
-
         if (isReversalDetected) {
             logger.warn(`[CandleLimitExit] REVERSAL DETECTED for ${sym} (${posSide.toUpperCase()}) | Reason: ${reversalReason}`);
             return { shouldExit: true, reason: reversalReason };
@@ -781,6 +786,29 @@ export class ProcessPendingState {
 
             const metrics = this.calculateMetrics(entryPrice, s.tpPrice || mtf.tp, s.slPrice || mtf.sl, cfg.LEVERAGE);
 
+            // 🔥 MOMENTUM INVALIDATION CHECK (2-3 consecutive cycles of weak scores)
+            const isMomentumExitEnabled = cfg.IS_MOMENTUM_INVALIDATION_EXIT_ENABLED ?? true;
+            const scoreThresh = cfg.MOMENTUM_INVALIDATION_SCORE_THRESHOLD ?? 20;
+            const confThresh = cfg.MOMENTUM_INVALIDATION_CONFIRMATION_THRESHOLD ?? 40;
+            const structThresh = cfg.MOMENTUM_INVALIDATION_STRUCTURE_THRESHOLD ?? 15;
+            const maxLowCycles = cfg.MOMENTUM_INVALIDATION_CONSECUTIVE_CYCLES ?? 2;
+
+            const isScoreWeak =
+                mtf.finalScore < scoreThresh &&
+                mtf.confirmationProbability < confThresh &&
+                mtf.structureProbability < structThresh;
+
+            const lowMomentumCycles = isScoreWeak ? (s.consecutiveLowMomentumCycles || 0) + 1 : 0;
+
+            if (isMomentumExitEnabled && isScoreWeak) {
+                cronLogger.warn(
+                    `[MomentumInvalidationCheck] ${sym} | Weak scores detected (${lowMomentumCycles}/${maxLowCycles} consecutive cycles) | ` +
+                    `FinalScore: ${mtf.finalScore} (below ${scoreThresh}), ConfProb: ${mtf.confirmationProbability} (below ${confThresh}), StructProb: ${mtf.structureProbability} (below ${structThresh})`
+                );
+            } else if (s.consecutiveLowMomentumCycles && s.consecutiveLowMomentumCycles > 0 && !isScoreWeak) {
+                cronLogger.info(`[MomentumInvalidationCheck] ${sym} | Momentum recovered (FinalScore: ${mtf.finalScore}). Resetting consecutive low momentum count to 0.`);
+            }
+
             const updateData: any = {
                 side: e.side,
                 leverage: cfg.LEVERAGE,
@@ -791,6 +819,7 @@ export class ProcessPendingState {
                 confirmationProbability: mtf.confirmationProbability,
                 structureProbability: mtf.structureProbability,
                 tradingMode: cfg.TRADING_MODE,
+                consecutiveLowMomentumCycles: lowMomentumCycles,
                 ...metrics
             };
 
@@ -798,9 +827,18 @@ export class ProcessPendingState {
             if (slPrice !== null) updateData.slPrice = slPrice;
             if (!s.entryFilledAt) updateData.entryFilledAt = new Date();
 
+            // 🔥 MOMENTUM INVALIDATION EXIT TRIGGER
+            if (isMomentumExitEnabled && lowMomentumCycles >= maxLowCycles) {
+                const exitReason = `Persistent Momentum Invalidation: Scores below threshold (FinalScore below ${scoreThresh}, ConfProb below ${confThresh}, StructProb below ${structThresh}) for ${lowMomentumCycles} consecutive cycles`;
+                cronLogger.warn(`[MomentumInvalidationExit] TRIGGERED EXIT for ${sym} | ${exitReason}`);
+                await TradeState.findByIdAndUpdate(s.id || (s as any)._id, { $set: updateData });
+                return this.executeCandleLimitExit(s, e, currentPrice, multiplier, exitReason, logContext);
+            }
+
             // 🔥 CANDLE LIMIT & REVERSAL EXIT CHECK
             const limitCheck = await this.evaluateCandleLimitAndReversal(sym, s, e, mtf, currentPrice, logContext);
             if (limitCheck.shouldExit) {
+                await TradeState.findByIdAndUpdate(s.id || (s as any)._id, { $set: updateData });
                 return this.executeCandleLimitExit(s, e, currentPrice, multiplier, limitCheck.reason, logContext);
             }
 
@@ -810,7 +848,8 @@ export class ProcessPendingState {
                 s.tradeAmountInUse === tradeAmountInUse &&
                 s.finalScore === mtf.finalScore &&
                 s.tpPrice === (s.tpPrice || mtf.tp) &&
-                s.slPrice === (s.slPrice || mtf.sl);
+                s.slPrice === (s.slPrice || mtf.sl) &&
+                (s.consecutiveLowMomentumCycles || 0) === lowMomentumCycles;
 
             if (isUnchanged && (s.stopLossOrderId && s.takeProfitOrderId)) {
                 cronLogger.info(`[PendingState] Core state unchanged for ${sym}, proceeding to manage open position (trailing).`);

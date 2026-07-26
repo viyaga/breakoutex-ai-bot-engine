@@ -51,6 +51,12 @@ export class TradingConfig {
         MIN_CONFIRMATION_SCORE: 60,
         MIN_STRUCTURE_SCORE: 20,
         MIN_FINAL_SCORE: 60,
+        IS_MOMENTUM_INVALIDATION_EXIT_ENABLED: true,
+        MOMENTUM_INVALIDATION_SCORE_THRESHOLD: 20,
+        MOMENTUM_INVALIDATION_CONFIRMATION_THRESHOLD: 40,
+        MOMENTUM_INVALIDATION_STRUCTURE_THRESHOLD: 15,
+        MOMENTUM_INVALIDATION_CONSECUTIVE_CYCLES: 2,
+        IS_TP_REDUCTION_ENABLED: false,
     }
 
     /* -------------------------------------------------------------------------
