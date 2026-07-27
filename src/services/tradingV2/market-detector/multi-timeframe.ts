@@ -76,7 +76,7 @@ export class MultiTimeframeAlignment {
         const structureBreakout = evaluateBreakoutTrade(structureCandles, structureTarget, structureConfig);
 
         // 🔥 HIGHEST TIMEFRAME BREAKOUT PRIORITY: 1h > 15m > 5m
-        let breakoutTimeframe: string = entryConfig.TIMEFRAME || "5m";
+        let breakoutTimeframe: string = entryConfig.IS_TESTING ? (entryConfig.TIMEFRAME || "5m") : "NONE";
         if (structureBreakout.direction !== "NONE") {
             breakoutTimeframe = entryConfig.STRUCTURE_TIMEFRAME || "1h";
         } else if (confirmationBreakout.direction !== "NONE") {
@@ -232,11 +232,14 @@ export class MultiTimeframeAlignment {
         const levels = this.calculateSlTpLevels(
             direction,
             entryPrice,
-            structureTarget,
+            entryTarget,
             confirmationTarget,
-            entryConfig,
+            structureTarget,
+            entryCandles,
             confirmationCandles,
             structureCandles,
+            entryConfig,
+            breakoutTimeframe,
             finalScore,
             isAllowedScore
         );
@@ -347,11 +350,14 @@ export class MultiTimeframeAlignment {
     private static calculateSlTpLevels(
         direction: "BUY" | "SELL",
         entryPrice: number,
-        structureTarget: TargetCandle,
+        entryTarget: TargetCandle,
         confirmationTarget: TargetCandle,
-        entryConfig: ConfigType,
+        structureTarget: TargetCandle,
+        entryCandles: Candle[],
         confirmationCandles: Candle[],
         structureCandles: Candle[],
+        entryConfig: ConfigType,
+        breakoutTimeframe: string,
         finalScore: number,
         isAllowedScore: boolean = false
     ): {
@@ -383,22 +389,67 @@ export class MultiTimeframeAlignment {
         const leverage = entryConfig.LEVERAGE;
 
         if (entryPrice > 0) {
-            /* ================= DYNAMIC ATR CALCULATION ================= */
+            /* ================= DYNAMIC ATR & SOURCE CANDLE SELECTION ================= */
+            const entrySlPrice = direction === "BUY" ? entryTarget.low : entryTarget.high;
             const structSlPrice = direction === "BUY" ? structureTarget.low : structureTarget.high;
             const confSlPrice = direction === "BUY" ? confirmationTarget.low : confirmationTarget.high;
 
+            const entrySlPerc = (Math.abs(entryPrice - entrySlPrice) / entryPrice) * 100;
             structSlPerc = (Math.abs(entryPrice - structSlPrice) / entryPrice) * 100;
             confSlPerc = (Math.abs(entryPrice - confSlPrice) / entryPrice) * 100;
 
             const maxLimit = entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT;
+            const slMode = entryConfig.SL_SELECTION_MODE || "active_tf"; // "active_tf" | "structure" | "tightest"
+
             let sourceCandle = confirmationTarget;
             let sourceCandles = confirmationCandles;
+            let selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
 
-            if (structSlPerc <= maxLimit) {
-                sourceCandle = structureTarget;
-                sourceCandles = structureCandles;
+            if (slMode === "active_tf") {
+                if (breakoutTimeframe === (entryConfig.TIMEFRAME || "5m") && entrySlPerc <= maxLimit) {
+                    sourceCandle = entryTarget;
+                    sourceCandles = entryCandles;
+                    selectedTfName = entryConfig.TIMEFRAME || "5m";
+                } else if (breakoutTimeframe === (entryConfig.CONFIRMATION_TIMEFRAME || "15m") && confSlPerc <= maxLimit) {
+                    sourceCandle = confirmationTarget;
+                    sourceCandles = confirmationCandles;
+                    selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
+                } else if (structSlPerc <= maxLimit) {
+                    sourceCandle = structureTarget;
+                    sourceCandles = structureCandles;
+                    selectedTfName = entryConfig.STRUCTURE_TIMEFRAME || "1h";
+                } else if (confSlPerc <= maxLimit) {
+                    sourceCandle = confirmationTarget;
+                    sourceCandles = confirmationCandles;
+                    selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
+                } else {
+                    isExceededMovementLimit = true;
+                }
+            } else if (slMode === "tightest") {
+                const candidates = [
+                    { tf: entryConfig.TIMEFRAME || "5m", candle: entryTarget, candles: entryCandles, perc: entrySlPerc },
+                    { tf: entryConfig.CONFIRMATION_TIMEFRAME || "15m", candle: confirmationTarget, candles: confirmationCandles, perc: confSlPerc },
+                    { tf: entryConfig.STRUCTURE_TIMEFRAME || "1h", candle: structureTarget, candles: structureCandles, perc: structSlPerc },
+                ].filter(c => c.perc <= maxLimit);
+
+                if (candidates.length > 0) {
+                    candidates.sort((a, b) => a.perc - b.perc);
+                    sourceCandle = candidates[0].candle;
+                    sourceCandles = candidates[0].candles;
+                    selectedTfName = candidates[0].tf;
+                } else {
+                    isExceededMovementLimit = true;
+                }
             } else {
-                if (confSlPerc > maxLimit) {
+                if (structSlPerc <= maxLimit) {
+                    sourceCandle = structureTarget;
+                    sourceCandles = structureCandles;
+                    selectedTfName = entryConfig.STRUCTURE_TIMEFRAME || "1h";
+                } else if (confSlPerc <= maxLimit) {
+                    sourceCandle = confirmationTarget;
+                    sourceCandles = confirmationCandles;
+                    selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
+                } else {
                     isExceededMovementLimit = true;
                 }
             }
@@ -431,7 +482,7 @@ export class MultiTimeframeAlignment {
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
             marketDetectorLogger.info(
-                `[CandleSL] ${entryConfig.SYMBOL} | Candle ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
+                `[CandleSL] ${entryConfig.SYMBOL} (${selectedTfName}, Mode:${slMode}) | Candle ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
             );
 
             /* ================= SL CROSSING SAFETIES ================= */
@@ -513,54 +564,127 @@ export class MultiTimeframeAlignment {
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 : 0;
 
-            /* ================= FORCED TP ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
+            /* ================= FORCED RR ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
             const targetMinRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.0);
+            const rrEnforcementMode = entryConfig.MIN_RR_ENFORCEMENT_MODE || "tp";
+
             if (rr < targetMinRr && !isSlAlreadyCrossed && !isExceededMovementLimit && netRisk > 0) {
                 const initialRr = rr;
                 const initialTp = tp;
-                const requiredNetReward = targetMinRr * netRisk;
+                const initialSl = sl;
 
-                let forcedTp: number;
-                if (direction === "BUY") {
-                    forcedTp = (requiredNetReward + entryPrice * (1 + feePercent / 2)) / (1 - feePercent / 2);
+                if (rrEnforcementMode === "sl") {
+                    // Mode = "sl": Shorten Stop Loss to achieve targetMinRr while preserving safety buffers
+                    const requiredMaxNetRisk = netReward / targetMinRr;
+
+                    let targetSl: number;
+                    if (direction === "BUY") {
+                        targetSl = (entryPrice * (1 + feePercent / 2) - requiredMaxNetRisk) / (1 - feePercent / 2);
+                    } else {
+                        targetSl = (requiredMaxNetRisk + entryPrice * (1 - feePercent / 2)) / (1 + feePercent / 2);
+                    }
+
+                    // Safety Solution for Shortening SL: Check minimum safe distance
+                    const minSafeBufferPerc = Math.max(0.15, entryConfig.MIN_SL_SAFETY_BUFFER_PERCENT ?? 0.2, entryConfig.SL_TRIGGER_BUFFER_PERCENT ?? 0.2);
+                    const minSafeDist = entryPrice * (minSafeBufferPerc / 100);
+
+                    const maxSafeSlBuy = entryPrice - minSafeDist;
+                    const minSafeSlSell = entryPrice + minSafeDist;
+
+                    let wasSlClamped = false;
+                    if (direction === "BUY" && targetSl > maxSafeSlBuy) {
+                        targetSl = maxSafeSlBuy;
+                        wasSlClamped = true;
+                    } else if (direction === "SELL" && targetSl < minSafeSlSell) {
+                        targetSl = minSafeSlSell;
+                        wasSlClamped = true;
+                    }
+
+                    sl = parseFloat(targetSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    slLimit = sl;
+
+                    // Recalculate Net Risk with new SL
+                    let newRiskPriceDist = Math.abs(entryPrice - sl);
+                    let newExitFeeSl = sl * (feePercent / 2);
+                    let newNetRisk = newRiskPriceDist + (entryFee + newExitFeeSl);
+
+                    // If SL was clamped to protect entry safety distance, use hybrid fallthrough to adjust TP for the remaining gap
+                    if (wasSlClamped) {
+                        const requiredNetRewardClamped = targetMinRr * newNetRisk;
+                        let forcedTpClamped: number;
+                        if (direction === "BUY") {
+                            forcedTpClamped = (requiredNetRewardClamped + entryPrice * (1 + feePercent / 2)) / (1 - feePercent / 2);
+                        } else {
+                            forcedTpClamped = (entryPrice * (1 - feePercent / 2) - requiredNetRewardClamped) / (1 + feePercent / 2);
+                        }
+                        tp = parseFloat(forcedTpClamped.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+                        baseTp = tp / tpTriggerFactor;
+                        const rawTpLimitForced = baseTp * tpLimitFactor;
+                        tpLimit = rawTpLimitForced <= 0
+                            ? parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES))
+                            : parseFloat(rawTpLimitForced.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+                        rewardPriceDist = Math.abs(tp - entryPrice);
+                        exitFeeTp = tp * (feePercent / 2);
+                        const forcedNetRewardClamped = rewardPriceDist - (entryFee + exitFeeTp);
+                        rr = newNetRisk > 0 ? forcedNetRewardClamped / newNetRisk : 0;
+                    } else {
+                        rewardPriceDist = Math.abs(tp - entryPrice);
+                        exitFeeTp = tp * (feePercent / 2);
+                        const currentNetReward = rewardPriceDist - (entryFee + exitFeeTp);
+                        rr = newNetRisk > 0 ? currentNetReward / newNetRisk : 0;
+                    }
+
+                    slPerc = entryPrice > 0 ? (newRiskPriceDist / entryPrice) * 100 : 0;
+                    tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
+
+                    marketDetectorLogger.info(
+                        `[DynamicSL] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < min RR (${targetMinRr.toFixed(2)}). Shortened SL to meet RR: initial SL=${initialSl} -> adjusted SL=${sl}${wasSlClamped ? ` (Clamped at ${minSafeBufferPerc}% min safe buffer)` : ""}, updated RR=${rr.toFixed(2)}`
+                    );
                 } else {
-                    forcedTp = (entryPrice * (1 - feePercent / 2) - requiredNetReward) / (1 + feePercent / 2);
-                }
+                    // Mode = "tp": Extend Take Profit to achieve targetMinRr (Existing logic)
+                    const requiredNetReward = targetMinRr * netRisk;
 
-                tp = parseFloat(forcedTp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    let forcedTp: number;
+                    if (direction === "BUY") {
+                        forcedTp = (requiredNetReward + entryPrice * (1 + feePercent / 2)) / (1 - feePercent / 2);
+                    } else {
+                        forcedTp = (entryPrice * (1 - feePercent / 2) - requiredNetReward) / (1 + feePercent / 2);
+                    }
 
-                // Recalculate baseTp & tpLimit based on forced tp
-                baseTp = tp / tpTriggerFactor;
-                const rawTpLimitForced = baseTp * tpLimitFactor;
-                if (rawTpLimitForced <= 0) {
-                    tpLimit = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                } else {
-                    tpLimit = parseFloat(rawTpLimitForced.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-                }
+                    tp = parseFloat(forcedTp.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
-                // Recalculate metrics with forced TP
-                rewardPriceDist = Math.abs(tp - entryPrice);
-                exitFeeTp = tp * (feePercent / 2);
-                const forcedNetReward = rewardPriceDist - (entryFee + exitFeeTp);
-                rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
+                    baseTp = tp / tpTriggerFactor;
+                    const rawTpLimitForced = baseTp * tpLimitFactor;
+                    if (rawTpLimitForced <= 0) {
+                        tpLimit = parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    } else {
+                        tpLimit = parseFloat(rawTpLimitForced.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                    }
 
-                // Adjust by tick step if decimal rounding placed rr slightly below targetMinRr
-                const tick = 1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES);
-                let loopCount = 0;
-                while (rr < targetMinRr && loopCount < 10) {
-                    tp = parseFloat((tp + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
                     rewardPriceDist = Math.abs(tp - entryPrice);
                     exitFeeTp = tp * (feePercent / 2);
-                    const currentNetReward = rewardPriceDist - (entryFee + exitFeeTp);
-                    rr = netRisk > 0 ? currentNetReward / netRisk : 0;
-                    loopCount++;
+                    const forcedNetReward = rewardPriceDist - (entryFee + exitFeeTp);
+                    rr = netRisk > 0 ? forcedNetReward / netRisk : 0;
+
+                    const tick = 1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES);
+                    let loopCount = 0;
+                    while (rr < targetMinRr && loopCount < 10) {
+                        tp = parseFloat((tp + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                        rewardPriceDist = Math.abs(tp - entryPrice);
+                        exitFeeTp = tp * (feePercent / 2);
+                        const currentNetReward = rewardPriceDist - (entryFee + exitFeeTp);
+                        rr = netRisk > 0 ? currentNetReward / netRisk : 0;
+                        loopCount++;
+                    }
+
+                    tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
+
+                    marketDetectorLogger.info(
+                        `[DynamicTP] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < target min RR (${targetMinRr.toFixed(2)}). Forced TP by adjusting TP: initial TP=${initialTp} -> adjusted TP=${tp}, updated RR=${rr.toFixed(2)}`
+                    );
                 }
-
-                tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
-
-                marketDetectorLogger.info(
-                    `[DynamicTP] ${entryConfig.SYMBOL}: Initial RR (${initialRr.toFixed(2)}) < target min RR (${targetMinRr.toFixed(2)}). Forced TP by adjusting TP: initial TP=${initialTp} -> adjusted TP=${tp}, updated RR=${rr.toFixed(2)}`
-                );
             }
 
             /* ================= TESTING MODE TP/SL GUARANTEE ================= */

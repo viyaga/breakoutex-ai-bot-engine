@@ -31,9 +31,12 @@ export interface ConfigType {
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     IS_TRAILING_SL_ENABLED?: boolean;
+    SL_SELECTION_MODE?: "active_tf" | "structure" | "tightest";
     LOOKBACK?: number;
     CONFIRMATION_LOOKBACK?: number;
     MIN_RR?: number;
+    MIN_RR_ENFORCEMENT_MODE?: "tp" | "sl";
+    MIN_SL_SAFETY_BUFFER_PERCENT?: number;
     MIN_TP_PRICE_MOVEMENT_PERCENT?: number;
     MAX_TP_PRICE_MOVEMENT_PERCENT?: number;
     MAX_SL_PRICE_MOVEMENT_PERCENT?: number;
