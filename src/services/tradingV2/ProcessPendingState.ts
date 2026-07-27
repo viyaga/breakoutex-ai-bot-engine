@@ -38,8 +38,8 @@ export class ProcessPendingState {
         const netRisk = slDist + (entryFee + exitFeeSl);
 
         return {
-            tpPercentage: (tpDist / entryPrice) * 100 * leverage,
-            slPercentage: (slDist / entryPrice) * 100 * leverage,
+            tpPercentage: (tpDist / entryPrice) * 100,
+            slPercentage: (slDist / entryPrice) * 100,
             riskRewardRatio: netRisk > 0 ? netReward / netRisk : 0
         };
     }
@@ -79,6 +79,7 @@ export class ProcessPendingState {
             structureProbability: null,
             tradingMode: null,
             consecutiveLowMomentumCycles: 0,
+            entryFilledAt: null,
         };
     }
 
@@ -211,30 +212,45 @@ export class ProcessPendingState {
         }
 
         const adapter = ExchangeAdapterFactory.getAdapter();
+        const cfg = TradingConfig.getConfig();
         const tp = await adapter.getOrderDetails(s.takeProfitOrderId);
         if (tp && tp.status === "CLOSED") {
-            const incrementalPnl = Number(tp.meta_data?.pnl || 0);
+            const exitPrice = Number(tp.average_fill_price || tp.limit_price || 0);
+            let incrementalPnl = Number(tp.meta_data?.pnl || 0);
+            if (!incrementalPnl && exitPrice > 0 && s.entryPrice) {
+                const qty = Number(s.quantity || 1);
+                const isBuy = s.side === "buy";
+                const priceDiff = isBuy ? exitPrice - s.entryPrice : s.entryPrice - exitPrice;
+                incrementalPnl = priceDiff * qty * cfg.LOT_SIZE;
+            }
             const incrementalFees = Number(tp.paid_commission || 0) + entryCommission;
             const netPnl = s.pnl + incrementalPnl;
             const fees = s.cumulativeFees + incrementalFees;
-            const exitPrice = Number(tp.average_fill_price || tp.limit_price || 0);
+            const netDebt = netPnl - fees;
 
-            logger.info(`[PositionOutcome] TAKE PROFIT reached for ${s.symbol}. Incremental PnL: ${incrementalPnl}, Fees: ${incrementalFees}, Exit Price: ${exitPrice}`);
+            logger.info(`[PositionOutcome] TAKE PROFIT reached for ${s.symbol}. Incremental PnL: ${incrementalPnl.toFixed(4)}, Fees: ${incrementalFees.toFixed(4)}, Exit Price: ${exitPrice}, Net Debt: ${netDebt.toFixed(4)}`);
 
-            return await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext);
+            return netDebt >= 0
+                ? await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext)
+                : await this.handleLoss(s, netDebt, netPnl, fees, currentPrice, incrementalPnl, incrementalFees, multiplier, exitPrice, logContext);
         }
 
         const sl = await adapter.getOrderDetails(s.stopLossOrderId);
         if (sl && sl.status === "CLOSED") {
-
-            const incrementalPnl = Number(sl?.meta_data?.pnl || 0);
+            const exitPrice = Number(sl.average_fill_price || sl.limit_price || 0);
+            let incrementalPnl = Number(sl?.meta_data?.pnl || 0);
+            if (!incrementalPnl && exitPrice > 0 && s.entryPrice) {
+                const qty = Number(s.quantity || 1);
+                const isBuy = s.side === "buy";
+                const priceDiff = isBuy ? exitPrice - s.entryPrice : s.entryPrice - exitPrice;
+                incrementalPnl = priceDiff * qty * cfg.LOT_SIZE;
+            }
             const incrementalFees = Number(sl?.paid_commission || 0) + entryCommission;
             const netPnl = s.pnl + incrementalPnl;
             const fees = s.cumulativeFees + incrementalFees;
             const netDebt = netPnl - fees;
-            const exitPrice = Number(sl.average_fill_price || sl.limit_price || 0);
 
-            logger.info(`[PositionOutcome] STOP LOSS hit for ${s.symbol}. Incremental PnL: ${incrementalPnl}, Fees: ${incrementalFees}, Exit Price: ${exitPrice}, Net Debt: ${netDebt}`);
+            logger.info(`[PositionOutcome] STOP LOSS hit for ${s.symbol}. Incremental PnL: ${incrementalPnl.toFixed(4)}, Fees: ${incrementalFees.toFixed(4)}, Exit Price: ${exitPrice}, Net Debt: ${netDebt.toFixed(4)}`);
 
             return netDebt >= 0
                 ? await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext)
@@ -617,12 +633,14 @@ export class ProcessPendingState {
         const maxCandlesMap = cfg.MAX_HOLDING_CANDLES_MAP || { "5m": 12, "15m": 8, "1h": 6, "4h": 4 };
         const maxAllowedCandles = maxCandlesMap[breakoutTf] ?? 12;
 
-        // 2. Calculate elapsed holding time & candle count using entryFilledAt (or createdAt as fallback)
+        // 2. Calculate elapsed holding time & candle count using entryFilledAt (or entry order timestamp / Date.now() as fallback)
         const fillTimeMs = s.entryFilledAt
             ? new Date(s.entryFilledAt).getTime()
-            : s.createdAt
-                ? new Date(s.createdAt).getTime()
-                : Date.now();
+            : e.created_at
+                ? new Date(e.created_at).getTime()
+                : e.updated_at
+                    ? new Date(e.updated_at).getTime()
+                    : Date.now();
         const tfDurationMs = Utils.getTimeframeDurationMs(breakoutTf);
         const elapsedMs = Date.now() - fillTimeMs;
         const elapsedCandles = Math.floor(elapsedMs / tfDurationMs);
@@ -732,7 +750,7 @@ export class ProcessPendingState {
         const priceDiff = isBuy ? exitPrice - entryPrice : entryPrice - exitPrice;
         const rawPnl = (priceDiff * qty * cfg.LOT_SIZE);
         const netPnl = s.pnl + rawPnl;
-        const netDebt = rawPnl - incrementalFees;
+        const netDebt = netPnl - totalFees;
 
         logger.info(`[CandleLimitExit] Trade outcome calculated for ${s.symbol}: Raw PnL: ${rawPnl.toFixed(4)}, Total Fees: ${totalFees.toFixed(4)}, Net Debt/PnL: ${netDebt.toFixed(4)}, Outcome: ${netDebt >= 0 ? "WIN" : "LOSS"}`);
 
@@ -829,7 +847,11 @@ export class ProcessPendingState {
 
             if (tpPrice !== null) updateData.tpPrice = tpPrice;
             if (slPrice !== null) updateData.slPrice = slPrice;
-            if (!s.entryFilledAt) updateData.entryFilledAt = new Date();
+            if (!s.entryFilledAt) {
+                const entryFillTime = e.created_at ? new Date(e.created_at) : (e.updated_at ? new Date(e.updated_at) : new Date());
+                s.entryFilledAt = entryFillTime;
+                updateData.entryFilledAt = entryFillTime;
+            }
 
             // 🔥 MOMENTUM INVALIDATION EXIT TRIGGER
             if (isMomentumExitEnabled && lowMomentumCycles >= maxLowCycles) {
