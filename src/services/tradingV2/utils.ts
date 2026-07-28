@@ -231,7 +231,6 @@ export class Utils {
                 type: "tp",
                 positionSide,
                 stopPrice: tpTriggerPrice,
-                limitPrice: tpLimitPrice,
                 entryOrMarketPrice: entryPrice
             });
             if (!validation.isValid) {
@@ -262,9 +261,8 @@ export class Utils {
 
             ...(tp && {
                 take_profit_order: {
-                    order_type: "limit_order",
+                    order_type: "market_order",
                     stop_price: String(tpTriggerPrice),
-                    limit_price: String(tpLimitPrice),
                 },
             }),
 

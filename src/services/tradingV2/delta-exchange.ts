@@ -476,9 +476,9 @@ export class DeltaExchange {
                     const plLogger = getContextualLogger(placedOrdersLogger, logContext);
                     plLogger.info(
                         `[INITIAL_BRACKET] Symbol: ${symbol} | ` +
-                        `TP ID: ${tpOrder?.id || 'N/A'}, TP Trigger (Stop Price): ${tpOrder?.stop_price || 'N/A'}, TP Limit: ${tpOrder?.limit_price || 'N/A'} | ` +
+                        `TP ID: ${tpOrder?.id || 'N/A'}, TP Trigger (Stop Price): ${tpOrder?.stop_price || 'N/A'} (Market Order) | ` +
                         `SL ID: ${slOrder?.id || 'N/A'}, SL Trigger (Stop Price): ${slOrder?.stop_price || 'N/A'} (Market Order) | ` +
-                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, TP Trigger Buffer: ${c.TP_TRIGGER_BUFFER_PERCENT}%, TP Limit Buffer: ${c.TP_LIMIT_BUFFER_PERCENT}%`
+                        `Config - SL Trigger Buffer: ${c.SL_TRIGGER_BUFFER_PERCENT}%, TP Trigger Buffer: ${c.TP_TRIGGER_BUFFER_PERCENT}%`
                     );
                     plLogger.info("Bracket order raw response details:", { raw });
 
