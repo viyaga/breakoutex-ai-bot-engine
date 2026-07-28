@@ -30,15 +30,15 @@ export class TradingConfig {
         TP_LIMIT_BUFFER_PERCENT: 0.3,
         MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: 1.5,
         MIN_RR: 1.0,
-        MIN_RR_ENFORCEMENT_MODE: "sl",
+        MIN_RR_ENFORCEMENT_MODE: "tp",
         MIN_SL_SAFETY_BUFFER_PERCENT: 0.2,
         MIN_TP_PRICE_MOVEMENT_PERCENT: 0.4,
         MAX_TP_PRICE_MOVEMENT_PERCENT: 3.0,
         MAX_SL_PRICE_MOVEMENT_PERCENT: 1.5,
         DRY_RUN: false,
         IS_TESTING: process.env.IS_TESTING === "true",
-        IS_TRAILING_SL_ENABLED: false,
-        SL_SELECTION_MODE: "active_tf",
+        IS_TRAILING_SL_ENABLED: true,
+        SL_SELECTION_MODE: "doji_filter",
         CONFIRMATION_LOOKBACK: 36,
         ESTIMATED_FEE_PERCENT: 0.1,
         IS_WEEKEND_SAFETY_ENABLED: true,
@@ -59,7 +59,7 @@ export class TradingConfig {
         MOMENTUM_INVALIDATION_CONFIRMATION_THRESHOLD: 40,
         MOMENTUM_INVALIDATION_STRUCTURE_THRESHOLD: 15,
         MOMENTUM_INVALIDATION_CONSECUTIVE_CYCLES: 2,
-        IS_TP_REDUCTION_ENABLED: false,
+        IS_TP_REDUCTION_ENABLED: true,
     }
 
     /* -------------------------------------------------------------------------

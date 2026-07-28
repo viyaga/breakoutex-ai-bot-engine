@@ -266,7 +266,7 @@ export class MultiTimeframeAlignment {
             ? tp > 0 && sl > 0
             : entryConfig.IS_TESTING
                 ? tp > 0 && sl > 0
-                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && rr >= minRr;
+                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && (rr + 1e-5) >= minRr;
 
         if (entryConfig.IS_TESTING && isAllowed && decision === "SKIP") {
             decision = "TEST_TRADE";
@@ -320,8 +320,8 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss boundary already crossed before entry: ${crossedReason}`);
         } else if (isExceededMovementLimit) {
             marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Stop loss percentage limit exceeded: Structure SL Distance=${structSlPerc.toFixed(2)}%, Confirmation SL Distance=${confSlPerc.toFixed(2)}% (Max Limit=${entryConfig.MAX_ALLOWED_PRICE_MOVEMENT_PERCENT}%)`);
-        } else if (rr < minRr) {
-            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Risk-Reward ratio below minimum: RR=${rr.toFixed(2)} (Min:${minRr})`);
+        } else if ((rr + 1e-5) < minRr) {
+            marketDetectorLogger.info(`[MTF-Skip] ${symbol} | Risk-Reward ratio below minimum: RR=${rr.toFixed(4)} (Min:${minRr})`);
         }
 
         return {
@@ -405,7 +405,7 @@ export class MultiTimeframeAlignment {
             let sourceCandles = confirmationCandles;
             let selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
 
-            if (slMode === "active_tf") {
+            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter") {
                 if (breakoutTimeframe === (entryConfig.TIMEFRAME || "5m") && entrySlPerc <= maxLimit) {
                     sourceCandle = entryTarget;
                     sourceCandles = entryCandles;
@@ -423,7 +423,10 @@ export class MultiTimeframeAlignment {
                     sourceCandles = confirmationCandles;
                     selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
                 } else {
-                    isExceededMovementLimit = true;
+                    // Fallback to active timeframe candle and clamp SL to maxLimit below
+                    sourceCandle = entryTarget;
+                    sourceCandles = entryCandles;
+                    selectedTfName = entryConfig.TIMEFRAME || "5m";
                 }
             } else if (slMode === "tightest") {
                 const candidates = [
@@ -438,7 +441,9 @@ export class MultiTimeframeAlignment {
                     sourceCandles = candidates[0].candles;
                     selectedTfName = candidates[0].tf;
                 } else {
-                    isExceededMovementLimit = true;
+                    sourceCandle = entryTarget;
+                    sourceCandles = entryCandles;
+                    selectedTfName = entryConfig.TIMEFRAME || "5m";
                 }
             } else {
                 if (structSlPerc <= maxLimit) {
@@ -450,7 +455,9 @@ export class MultiTimeframeAlignment {
                     sourceCandles = confirmationCandles;
                     selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
                 } else {
-                    isExceededMovementLimit = true;
+                    sourceCandle = structureTarget;
+                    sourceCandles = structureCandles;
+                    selectedTfName = entryConfig.STRUCTURE_TIMEFRAME || "1h";
                 }
             }
 
@@ -470,16 +477,62 @@ export class MultiTimeframeAlignment {
             /* ================= CANDLE LOW / HIGH SL ================= */
             let structSl: number;
 
-            if (direction === "BUY") {
-                const rawSwingLow = sourceCandle.low;
-                structSl = rawSwingLow;
-                sl = rawSwingLow * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+            if (slMode === "lookback_3" && sourceCandles && sourceCandles.length > 0) {
+                const lookbackCandles = sourceCandles.slice(-3);
+                if (direction === "BUY") {
+                    structSl = Math.min(...lookbackCandles.map(c => c.low));
+                } else {
+                    structSl = Math.max(...lookbackCandles.map(c => c.high));
+                }
+            } else if (slMode === "doji_filter" && sourceCandles && sourceCandles.length > 0) {
+                const recentCandles = sourceCandles.slice(-5);
+                let validCandle: Candle | undefined;
+
+                for (let i = recentCandles.length - 1; i >= 0; i--) {
+                    const c = recentCandles[i];
+                    const bodyPct = Utils.getBodyPercent(c);
+                    const range = Math.abs(c.high - c.low);
+                    if (bodyPct >= 40 && range >= 0.5 * atrDistance) {
+                        validCandle = c;
+                        break;
+                    }
+                }
+
+                if (validCandle) {
+                    structSl = direction === "BUY" ? validCandle.low : validCandle.high;
+                } else {
+                    structSl = direction === "BUY"
+                        ? Math.min(...recentCandles.map(c => c.low))
+                        : Math.max(...recentCandles.map(c => c.high));
+                }
             } else {
-                const rawSwingHigh = sourceCandle.high;
-                structSl = rawSwingHigh;
-                sl = rawSwingHigh * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+                structSl = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
+            }
+
+            if (direction === "BUY") {
+                sl = structSl * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
+            } else {
+                sl = structSl * (1 + entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
             }
             sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+
+            // Smart SL Clamping: If natural SL distance exceeds maxLimit (1.5%), clamp SL to maxLimit to allow trade execution safely!
+            const naturalSlDistancePerc = (Math.abs(entryPrice - sl) / entryPrice) * 100;
+            if (naturalSlDistancePerc > maxLimit) {
+                const cappedDist = entryPrice * (maxLimit / 100);
+                if (direction === "BUY") {
+                    sl = entryPrice - cappedDist;
+                    structSl = sl;
+                } else {
+                    sl = entryPrice + cappedDist;
+                    structSl = sl;
+                }
+                sl = parseFloat(sl.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                isExceededMovementLimit = false;
+                marketDetectorLogger.info(
+                    `[DynamicSL-Clamp] ${entryConfig.SYMBOL}: Natural SL distance (${naturalSlDistancePerc.toFixed(2)}%) exceeded max limit (${maxLimit}%). Clamped SL to ${maxLimit}% (${sl}) to allow trade execution.`
+                );
+            }
 
             marketDetectorLogger.info(
                 `[CandleSL] ${entryConfig.SYMBOL} (${selectedTfName}, Mode:${slMode}) | Candle ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
@@ -619,16 +672,28 @@ export class MultiTimeframeAlignment {
                         }
                         tp = parseFloat(forcedTpClamped.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
 
+                        rewardPriceDist = Math.abs(tp - entryPrice);
+                        exitFeeTp = tp * (feePercent / 2);
+                        const forcedNetRewardClamped = rewardPriceDist - (entryFee + exitFeeTp);
+                        rr = newNetRisk > 0 ? forcedNetRewardClamped / newNetRisk : 0;
+
+                        // Tick-nudge loop to ensure decimal rounding doesn't drop RR below targetMinRr
+                        const tick = 1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES);
+                        let loopCount = 0;
+                        while ((rr + 1e-5) < targetMinRr && loopCount < 10) {
+                            tp = parseFloat((tp + (direction === "BUY" ? tick : -tick)).toFixed(entryConfig.PRICE_DECIMAL_PLACES));
+                            rewardPriceDist = Math.abs(tp - entryPrice);
+                            exitFeeTp = tp * (feePercent / 2);
+                            const currentNetReward = rewardPriceDist - (entryFee + exitFeeTp);
+                            rr = newNetRisk > 0 ? currentNetReward / newNetRisk : 0;
+                            loopCount++;
+                        }
+
                         baseTp = tp / tpTriggerFactor;
                         const rawTpLimitForced = baseTp * tpLimitFactor;
                         tpLimit = rawTpLimitForced <= 0
                             ? parseFloat((1 / Math.pow(10, entryConfig.PRICE_DECIMAL_PLACES)).toFixed(entryConfig.PRICE_DECIMAL_PLACES))
                             : parseFloat(rawTpLimitForced.toFixed(entryConfig.PRICE_DECIMAL_PLACES));
-
-                        rewardPriceDist = Math.abs(tp - entryPrice);
-                        exitFeeTp = tp * (feePercent / 2);
-                        const forcedNetRewardClamped = rewardPriceDist - (entryFee + exitFeeTp);
-                        rr = newNetRisk > 0 ? forcedNetRewardClamped / newNetRisk : 0;
                     } else {
                         rewardPriceDist = Math.abs(tp - entryPrice);
                         exitFeeTp = tp * (feePercent / 2);
