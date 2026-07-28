@@ -14,6 +14,10 @@ export class Data {
     private static productCache = new Map<string, { data: any; timestamp: number }>();
     private static PRODUCT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+    // Static in-memory cache for bot configs (30 seconds TTL)
+    private static configCache: { data: ConfigType[]; timestamp: number } | null = null;
+    private static CONFIG_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
     static async getOrCreateState(
         tradingBotId: string,
         userId: string,
@@ -172,6 +176,12 @@ export class Data {
         params: { limit: number; offset: number }
     ): Promise<ConfigType[]> {
         const { limit, offset } = params;
+
+        if (this.configCache && (Date.now() - this.configCache.timestamp < this.CONFIG_CACHE_TTL_MS)) {
+            tradingCronLogger.debug(`[fetchTradingConfigs] Returning ${this.configCache.data.length} cached bot configs (TTL valid)`);
+            return this.configCache.data;
+        }
+
         const url = `${env.payloadUrl}/api/trading-bots/active-subscribed/all?limit=${limit}&offset=${offset}&serverIp=${env.serverIp}`;
 
         let bots: ActiveSubscribedBot[] = [];
@@ -234,6 +244,7 @@ export class Data {
             configDebugLogger.debug(`[fetchTradingConfigs] Final merged config for bot ${cfg.id} (${cfg.SYMBOL} on ${cfg.EXCHANGE})`, { config: cfg });
         });
 
+        this.configCache = { data: mergedConfigs, timestamp: Date.now() };
         return mergedConfigs;
     }
 }

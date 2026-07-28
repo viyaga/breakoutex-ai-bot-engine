@@ -457,8 +457,27 @@ export class ProcessPendingState {
                 const isBuy = e.side === "buy";
                 const isTargetReduced = isBuy ? mtf.tp < tpPrice : mtf.tp > tpPrice;
                 if (isTargetReduced) {
-                    logger.info(`[PriceTrailing] Dynamic TP reduction enabled for ${sym}. Lowering target TP from ${tpPrice} to ${mtf.tp}`);
-                    tp = mtf.tp;
+                    const minTpPerc = TradingConfig.getConfig().MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.4;
+                    const entryPrice = s.entryPrice || 0;
+                    let safeReducedTp = mtf.tp;
+
+                    if (entryPrice > 0) {
+                        const minProfitDist = entryPrice * (minTpPerc / 100);
+                        const minAllowedTp = isBuy ? entryPrice + minProfitDist : entryPrice - minProfitDist;
+                        if (isBuy && safeReducedTp < minAllowedTp) {
+                            safeReducedTp = minAllowedTp;
+                        } else if (!isBuy && safeReducedTp > minAllowedTp) {
+                            safeReducedTp = minAllowedTp;
+                        }
+                    }
+
+                    const decimals = TradingConfig.getConfig().PRICE_DECIMAL_PLACES || 4;
+                    safeReducedTp = parseFloat(safeReducedTp.toFixed(decimals));
+
+                    if (isBuy ? safeReducedTp < tpPrice : safeReducedTp > tpPrice) {
+                        logger.info(`[PriceTrailing] Dynamic TP reduction enabled for ${sym}. Lowering target TP from ${tpPrice} to ${safeReducedTp}`);
+                        tp = safeReducedTp;
+                    }
                 }
             }
 
