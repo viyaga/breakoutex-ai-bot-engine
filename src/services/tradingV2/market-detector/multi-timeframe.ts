@@ -85,11 +85,10 @@ export class MultiTimeframeAlignment {
             breakoutTimeframe = entryConfig.TIMEFRAME || "5m";
         }
 
-        // Blend confirmation breakout score with general confirmation probability
-        // 🔥 Prioritize 1h Breakout: Increased weight from 0.60 to 0.80
+        // Blend confirmation breakout score with general confirmation probability (50/50 balance)
         const confirmationProbability = Math.round(
-            (confirmationBreakout.score * 0.80) +
-            (rawConfirmationProbability * 0.20)
+            (confirmationBreakout.score * 0.50) +
+            (rawConfirmationProbability * 0.50)
         );
 
         const evalTag = positionSideOverride ? `[MTF-PosMgmt:${positionSideOverride}]` : `[MTF-NewEntry]`;
@@ -192,6 +191,18 @@ export class MultiTimeframeAlignment {
             marketDetectorLogger.info(`${evalTag} ${symbol}: Trend Alignment Mismatch (${reasons.join(", ")}). -${penalty} penalty applied to score (Final: ${finalScore})`);
         }
 
+        /* ================= ATR LOW VOLATILITY PENALTY & GATE ================= */
+        let atrPercent = getRollingATRPercentAvg(confirmationCandles, 14);
+        if (!atrPercent || isNaN(atrPercent) || atrPercent <= 0) {
+            atrPercent = 1.0;
+        }
+
+        if (atrPercent < 0.15) {
+            const atrPenalty = 15;
+            finalScore = Math.max(0, finalScore - atrPenalty);
+            marketDetectorLogger.info(`${evalTag} ${symbol}: Low ATR Volatility (${atrPercent.toFixed(4)}% < 0.15%). -${atrPenalty} penalty applied to final score (Final: ${finalScore})`);
+        }
+
         marketDetectorLogger.info(`${evalTag} Final Score Calculation: (5m:${entryScore} * 0.25) + (15m:${confirmationProbability} * 0.45) + (1h:${structureProbability} * 0.30) [with adjustments] = Final: ${finalScore}`);
 
         let decision: TradeDecision = "SKIP";
@@ -207,12 +218,14 @@ export class MultiTimeframeAlignment {
         const isPassingMinScores =
             entryScore >= minEntry &&
             confirmationProbability >= minConf &&
+            rawConfirmationProbability >= Math.min(minConf, 55) &&
             structureProbability >= minStruct;
 
         const minFinal = entryConfig.MIN_FINAL_SCORE ?? 70;
 
-        // Preliminary permission based on score
-        let isAllowedScore = entryConfig.IS_TESTING || (finalScore >= minFinal && isPassingMinScores);
+        // Preliminary permission based on score (Block trade if ATR% is under 0.08% dead market threshold)
+        const isDeadMarket = atrPercent < 0.08;
+        let isAllowedScore = entryConfig.IS_TESTING || (!isDeadMarket && finalScore >= minFinal && isPassingMinScores);
 
         /* ================= EXTRA FILTER (OPTIONAL BUT STRONG) ================= */
 
@@ -256,7 +269,8 @@ export class MultiTimeframeAlignment {
             crossedReason,
             isExceededMovementLimit,
             structSlPerc,
-            confSlPerc
+            confSlPerc,
+            isPoorNaturalRr
         } = levels;
 
         /* ================= FINAL PERMISSION ================= */
@@ -266,7 +280,7 @@ export class MultiTimeframeAlignment {
             ? tp > 0 && sl > 0
             : entryConfig.IS_TESTING
                 ? tp > 0 && sl > 0
-                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && (rr + 1e-5) >= minRr;
+                : isAllowedScore && tp > 0 && sl > 0 && !isExceededMovementLimit && !isSlAlreadyCrossed && !isPoorNaturalRr && (rr + 1e-5) >= minRr;
 
         if (entryConfig.IS_TESTING && isAllowed && decision === "SKIP") {
             decision = "TEST_TRADE";
@@ -373,6 +387,7 @@ export class MultiTimeframeAlignment {
         isExceededMovementLimit: boolean;
         structSlPerc: number;
         confSlPerc: number;
+        isPoorNaturalRr: boolean;
     } {
         let tp = 0;
         let sl = 0;
@@ -386,6 +401,7 @@ export class MultiTimeframeAlignment {
         let isSlAlreadyCrossed = false;
         let crossedReason = "";
         let isExceededMovementLimit = false;
+        let isPoorNaturalRr = false;
         const leverage = entryConfig.LEVERAGE;
 
         if (entryPrice > 0) {
@@ -405,7 +421,7 @@ export class MultiTimeframeAlignment {
             let sourceCandles = confirmationCandles;
             let selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
 
-            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter" || slMode === "atr_only") {
+            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter" || slMode === "fixed_atr") {
                 if (breakoutTimeframe === (entryConfig.TIMEFRAME || "5m") && entrySlPerc <= maxLimit) {
                     sourceCandle = entryTarget;
                     sourceCandles = entryCandles;
@@ -505,8 +521,10 @@ export class MultiTimeframeAlignment {
                         ? Math.min(...recentCandles.map(c => c.low))
                         : Math.max(...recentCandles.map(c => c.high));
                 }
-            } else if (slMode === "atr_only") {
-                structSl = direction === "BUY" ? (entryPrice - atrDistance) : (entryPrice + atrDistance);
+            } else if (slMode === "fixed_atr") {
+                const slAtrMult = entryConfig.SL_ATR_MULTIPLIER ?? 1.0;
+                const slAtrDist = atrDistance * slAtrMult;
+                structSl = direction === "BUY" ? (entryPrice - slAtrDist) : (entryPrice + slAtrDist);
             } else {
                 structSl = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
             }
@@ -578,9 +596,10 @@ export class MultiTimeframeAlignment {
             let baseTp: number;
 
             if (tpMode === "fixed_atr") {
-                const rawTpPercent = atrPercent * 2;
+                const tpAtrMult = entryConfig.TP_ATR_MULTIPLIER ?? 2.0;
+                const rawTpPercent = atrPercent * tpAtrMult;
                 const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
-                marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_atr | 2x ATR%=${rawTpPercent.toFixed(4)}% | Final TP%=${tpPercent.toFixed(4)}%`);
+                marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_atr | ${tpAtrMult}x ATR%=${rawTpPercent.toFixed(4)}% | Final TP%=${tpPercent.toFixed(4)}%`);
                 baseTp = direction === "BUY" ? entryPrice * (1 + tpPercent / 100) : entryPrice * (1 - tpPercent / 100);
             } else if (tpMode === "fixed_rr") {
                 const targetRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.5);
@@ -666,6 +685,11 @@ export class MultiTimeframeAlignment {
                 const initialRr = rr;
                 const initialTp = tp;
                 const initialSl = sl;
+
+                if (initialRr < 0.35) {
+                    isPoorNaturalRr = true;
+                    marketDetectorLogger.warn(`[DynamicRR-Safety] ${entryConfig.SYMBOL}: Natural Risk/Reward (${initialRr.toFixed(2)}) is below minimum structure threshold (0.35). Trade rejected due to poor risk structure.`);
+                }
 
                 if (rrEnforcementMode === "sl") {
                     // Mode = "sl": Shorten Stop Loss to achieve targetMinRr while preserving safety buffers
@@ -845,7 +869,8 @@ export class MultiTimeframeAlignment {
             crossedReason,
             isExceededMovementLimit,
             structSlPerc,
-            confSlPerc
+            confSlPerc,
+            isPoorNaturalRr
         };
     }
 }
