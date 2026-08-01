@@ -37,6 +37,14 @@ This guide explains every configuration parameter in the trading engine, what it
   5. **`"tightest"`**: Picks the shortest SL among all timeframes within maximum movement limits.
   6. **`"atr_only"`**: Anchors SL purely to 1x ATR distance from entry price, ignoring candle highs/lows.
 
+### `TP_SELECTION_MODE`
+* **Type:** `"dynamic_atr"` | `"fixed_atr"` | `"fixed_rr"`
+* **Default:** `"dynamic_atr"`
+* **Explanation:** Controls how the Take Profit target is selected:
+  1. **`"dynamic_atr"`** ⭐: Dynamically scales ATR (1.0x - 2.5x) based on entry score, HTF trend alignment (+0.3x), and volume surge (+0.2x).
+  2. **`"fixed_atr"`**: Uses a fixed 2x ATR distance from entry price.
+  3. **`"fixed_rr"`**: Calculates TP directly from the configured Risk-to-Reward ratio (`MIN_RR`).
+
 ### `MIN_SL_SAFETY_BUFFER_PERCENT`
 * **Type:** `number` (e.g. `0.2` = `0.2%`)
 * **Default:** `0.2`

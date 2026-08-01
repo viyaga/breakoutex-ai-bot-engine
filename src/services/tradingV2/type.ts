@@ -32,6 +32,7 @@ export interface ConfigType {
     IS_TESTING: boolean;
     IS_TRAILING_SL_ENABLED?: boolean;
     SL_SELECTION_MODE?: "active_tf" | "structure" | "tightest" | "lookback_3" | "doji_filter" | "atr_only";
+    TP_SELECTION_MODE?: "dynamic_atr" | "fixed_atr" | "fixed_rr";
     LOOKBACK?: number;
     CONFIRMATION_LOOKBACK?: number;
     MIN_RR?: number;

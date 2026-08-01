@@ -570,26 +570,65 @@ export class MultiTimeframeAlignment {
             const exitFeeSl = sl * (feePercent / 2);
             const netRisk = riskPriceDist + (entryFee + exitFeeSl);
 
-            /* ================= DYNAMIC TP (ATR BASED) ================= */
+            /* ================= DYNAMIC TP SELECTION MODES ================= */
+            const tpMode = entryConfig.TP_SELECTION_MODE || "dynamic_atr";
             const minTpPerc = entryConfig.MIN_TP_PRICE_MOVEMENT_PERCENT ?? 0.5;
             const maxTpPerc = entryConfig.MAX_TP_PRICE_MOVEMENT_PERCENT ?? 3.0;
 
-            // Scale multiplier: 70 score -> 1.0x ATR, 80 score -> 1.5x ATR, 90 score -> 2.0x ATR
-            const scoreFactor = Math.max(70, Math.min(90, finalScore));
-            const multiplier = 1.0 + ((scoreFactor - 70) / 20) * 1.0;
-
-            const rawTpPercent = atrPercent * multiplier;
-
-            // Clamp tpPercent between config bounds
-            const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
-
-            marketDetectorLogger.info(`[DynamicTP] ${entryConfig.SYMBOL} Volatility Analysis: ATR%=${atrPercent.toFixed(4)}% (Timeframe: ${sourceCandles === structureCandles ? 'Structure' : 'Confirmation'}) | Score=${finalScore} | Multiplier=${multiplier.toFixed(2)}x | Raw TP%=${rawTpPercent.toFixed(4)}% | Config Limits=[${minTpPerc.toFixed(2)}%, ${maxTpPerc.toFixed(2)}%] | Final TP%=${tpPercent.toFixed(4)}%`);
-
             let baseTp: number;
-            if (direction === "BUY") {
-                baseTp = entryPrice * (1 + tpPercent / 100);
+
+            if (tpMode === "fixed_atr") {
+                const rawTpPercent = atrPercent * 2;
+                const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
+                marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_atr | 2x ATR%=${rawTpPercent.toFixed(4)}% | Final TP%=${tpPercent.toFixed(4)}%`);
+                baseTp = direction === "BUY" ? entryPrice * (1 + tpPercent / 100) : entryPrice * (1 - tpPercent / 100);
+            } else if (tpMode === "fixed_rr") {
+                const targetRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.5);
+                const requiredNetReward = targetRr * netRisk;
+                if (direction === "BUY") {
+                    baseTp = (requiredNetReward + entryPrice * (1 + feePercent / 2)) / (1 - feePercent / 2);
+                } else {
+                    baseTp = (entryPrice * (1 - feePercent / 2) - requiredNetReward) / (1 + feePercent / 2);
+                }
+                marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_rr | Target RR=${targetRr} | Base TP=${baseTp}`);
             } else {
-                baseTp = entryPrice * (1 - tpPercent / 100);
+                // Enhanced Dynamic ATR: Score Scaled + HTF Trend Bonus + Volume Surge Bonus
+                const scoreFactor = Math.max(70, Math.min(90, finalScore));
+                const baseMultiplier = 1.0 + ((scoreFactor - 70) / 20) * 1.0; // 1.0x to 2.0x base
+
+                // 1. HTF Trend Alignment Bonus (+0.3x for 1h/structure, +0.15x for 15m/confirmation)
+                let htfBonus = 0;
+                const structTfName = entryConfig.STRUCTURE_TIMEFRAME || "1h";
+                const confTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
+                if (breakoutTimeframe === structTfName) {
+                    htfBonus = 0.3;
+                } else if (breakoutTimeframe === confTfName) {
+                    htfBonus = 0.15;
+                }
+
+                // 2. Volume Surge Bonus (+0.2x for volume >= 1.5x 20-period avg)
+                let volumeBonus = 0;
+                if (entryTarget && entryCandles && entryCandles.length > 0) {
+                    const recentCandles = entryCandles.slice(-20);
+                    const avgVol = recentCandles.reduce((acc, c) => acc + (c.volume || 0), 0) / recentCandles.length;
+                    if (avgVol > 0 && entryTarget.volume && (entryTarget.volume / avgVol) >= 1.5) {
+                        volumeBonus = 0.2;
+                    }
+                }
+
+                // Combine & cap maximum dynamic multiplier to 2.5x ATR
+                const multiplier = Math.min(2.5, baseMultiplier + htfBonus + volumeBonus);
+
+                // Use robust 15m ATR if available, fallback to active ATR
+                const effectiveAtrPercent = getRollingATRPercentAvg(confirmationCandles, 14) || atrPercent;
+
+                const rawTpPercent = effectiveAtrPercent * multiplier;
+                const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
+
+                marketDetectorLogger.info(
+                    `[DynamicTP-Enhanced] ${entryConfig.SYMBOL}: ATR%=${effectiveAtrPercent.toFixed(4)}% | Score=${finalScore} | Multipliers [Base:${baseMultiplier.toFixed(2)}x, HTF:${htfBonus > 0 ? `+${htfBonus}` : '0'}, Vol:${volumeBonus > 0 ? `+${volumeBonus}` : '0'}] = Total:${multiplier.toFixed(2)}x | Raw TP%=${rawTpPercent.toFixed(4)}% | Final TP%=${tpPercent.toFixed(4)}%`
+                );
+                baseTp = direction === "BUY" ? entryPrice * (1 + tpPercent / 100) : entryPrice * (1 - tpPercent / 100);
             }
 
             const tpTriggerFactor = 1 - (direction === "BUY" ? entryConfig.TP_TRIGGER_BUFFER_PERCENT : -entryConfig.TP_TRIGGER_BUFFER_PERCENT) / 100;
