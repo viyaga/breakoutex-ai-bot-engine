@@ -27,7 +27,7 @@ This guide explains every configuration parameter in the trading engine, what it
 * **Usage:** Prevents winning trades from reversing into full Stop Loss losses.
 
 ### `SL_SELECTION_MODE`
-* **Type:** `"structure"` | `"lookback_3"` | `"doji_filter"` | `"active_tf"` | `"tightest"`
+* **Type:** `"structure"` | `"lookback_3"` | `"doji_filter"` | `"active_tf"` | `"tightest"` | `"atr_only"`
 * **Default:** `"structure"`
 * **Explanation:** Controls how the Stop Loss swing high/low anchor is chosen:
   1. **`"structure"`** ⭐: Anchors to 1h/15m structure candles. Filters out all 5m noise. Best for trend following.
@@ -35,6 +35,7 @@ This guide explains every configuration parameter in the trading engine, what it
   3. **`"lookback_3"`**: Takes the lowest low (BUY) or highest high (SELL) across the last 3 candles.
   4. **`"active_tf"`**: Anchors strictly to the active breakout candle's swing level.
   5. **`"tightest"`**: Picks the shortest SL among all timeframes within maximum movement limits.
+  6. **`"atr_only"`**: Anchors SL purely to 1x ATR distance from entry price, ignoring candle highs/lows.
 
 ### `MIN_SL_SAFETY_BUFFER_PERCENT`
 * **Type:** `number` (e.g. `0.2` = `0.2%`)
@@ -139,7 +140,7 @@ This guide explains every configuration parameter in the trading engine, what it
     MIN_RR: 1.0,
     MIN_RR_ENFORCEMENT_MODE: "tp",      // ✅ Structural SL + Extended TP
     IS_TRAILING_SL_ENABLED: true,       // ✅ Dynamic SL Trailing active
-    SL_SELECTION_MODE: "structure",     // ✅ Options: "structure" | "doji_filter" | "lookback_3"
+    SL_SELECTION_MODE: "structure",     // ✅ Options: "structure" | "doji_filter" | "lookback_3" | "atr_only"
     MIN_SL_SAFETY_BUFFER_PERCENT: 0.2,
     MIN_TP_PRICE_MOVEMENT_PERCENT: 0.4,
     MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: 1.5,

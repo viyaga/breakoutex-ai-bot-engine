@@ -405,7 +405,7 @@ export class MultiTimeframeAlignment {
             let sourceCandles = confirmationCandles;
             let selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
 
-            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter") {
+            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter" || slMode === "atr_only") {
                 if (breakoutTimeframe === (entryConfig.TIMEFRAME || "5m") && entrySlPerc <= maxLimit) {
                     sourceCandle = entryTarget;
                     sourceCandles = entryCandles;
@@ -505,6 +505,8 @@ export class MultiTimeframeAlignment {
                         ? Math.min(...recentCandles.map(c => c.low))
                         : Math.max(...recentCandles.map(c => c.high));
                 }
+            } else if (slMode === "atr_only") {
+                structSl = direction === "BUY" ? (entryPrice - atrDistance) : (entryPrice + atrDistance);
             } else {
                 structSl = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
             }

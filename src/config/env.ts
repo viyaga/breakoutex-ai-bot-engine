@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
 
 // Check if .env file exists
 const envPath = path.resolve(process.cwd(), '.env');
