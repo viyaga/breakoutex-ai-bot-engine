@@ -40,7 +40,7 @@ export class TradingConfig {
         IS_TRAILING_SL_ENABLED: false,
         SL_SELECTION_MODE: "atr_only",
         TP_SELECTION_MODE: "fixed_atr",
-        CONFIRMATION_LOOKBACK: 36,
+        CONFIRMATION_LOOKBACK: 48,
         ESTIMATED_FEE_PERCENT: 0.1,
         IS_WEEKEND_SAFETY_ENABLED: true,
         IS_CANDLE_LIMIT_EXIT_ENABLED: true,

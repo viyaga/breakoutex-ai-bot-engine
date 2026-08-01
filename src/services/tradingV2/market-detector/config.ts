@@ -3,14 +3,15 @@ import { ConfigType, InternalChopConfig } from "../type";
 export function getInternalConfig(config: ConfigType): InternalChopConfig {
     const timeframe = (config.TIMEFRAME || "15m").toLowerCase();
 
-    let lookback = 24;
+    let lookback = 36;
 
-    if (timeframe.includes("15m")) lookback = 24;
-    else if (timeframe.includes("1h")) lookback = 36;
-    else if (timeframe.includes("4h")) lookback = 48;
+    if (timeframe.includes("5m")) lookback = 36;
+    else if (timeframe.includes("15m")) lookback = 48;
+    else if (timeframe.includes("1h")) lookback = 48;
+    else if (timeframe.includes("4h")) lookback = 60;
 
     const resolvedLookback = config.LOOKBACK ?? lookback;
-    const resolvedConfLookback = config.CONFIRMATION_LOOKBACK ?? 36;
+    const resolvedConfLookback = config.CONFIRMATION_LOOKBACK ?? 48;
 
     const base: Record<string, InternalChopConfig> = {
         conservative: {
