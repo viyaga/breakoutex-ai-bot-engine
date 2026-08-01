@@ -1,4 +1,11 @@
-import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+
+// Check if .env file exists
+const envPath = path.resolve(process.cwd(), '.env');
+if (!fs.existsSync(envPath)) {
+    throw new Error('CRITICAL STARTUP ERROR: .env file is missing! Please create a .env file based on env.example before running the application.');
+}
 
 dotenv.config();
 
@@ -12,7 +19,7 @@ const requiredEnvVars = [
 
 const missingEnvVars = requiredEnvVars.filter((v) => !process.env[v]);
 if (missingEnvVars.length > 0) {
-    throw new Error(`CRITICAL STARTUP ERROR: Missing required environment variables: ${missingEnvVars.join(', ')}`);
+    throw new Error(`CRITICAL STARTUP ERROR: Missing required environment variables in .env: ${missingEnvVars.join(', ')}. Please update your .env file.`);
 }
 
 interface EnvConfig {
