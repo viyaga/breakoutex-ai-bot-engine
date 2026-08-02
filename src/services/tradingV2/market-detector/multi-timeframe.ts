@@ -522,11 +522,15 @@ export class MultiTimeframeAlignment {
                         : Math.max(...recentCandles.map(c => c.high));
                 }
             } else if (slMode === "fixed_atr") {
-                const slAtrMult = entryConfig.SL_ATR_MULTIPLIER ?? 1.0;
+                const estimatedFeePerc = entryConfig.ESTIMATED_FEE_PERCENT || 0.1;
+                const feeToAtrRatio = atrPercent > 0 ? estimatedFeePerc / atrPercent : 0.5;
+                const smartBufferBonus = parseFloat(Math.max(0.05, Math.min(0.25, 0.05 + (feeToAtrRatio * 0.36))).toFixed(3));
+                const slAtrMult = (entryConfig.SL_ATR_MULTIPLIER ?? 1.0) + smartBufferBonus;
                 const slAtrDist = atrDistance * slAtrMult;
                 const targetSlPrice = direction === "BUY" ? (entryPrice - slAtrDist) : (entryPrice + slAtrDist);
                 const slBufferFactor = 1 - (direction === "BUY" ? entryConfig.SL_TRIGGER_BUFFER_PERCENT : -entryConfig.SL_TRIGGER_BUFFER_PERCENT) / 100;
                 structSl = targetSlPrice / slBufferFactor;
+                marketDetectorLogger.info(`[SmartBuffer-SL] ${entryConfig.SYMBOL}: ATR%=${atrPercent.toFixed(4)}% | Fee/ATR Ratio=${feeToAtrRatio.toFixed(3)} | Smart Buffer=+${smartBufferBonus}x ATR | Final SL Mult=${slAtrMult.toFixed(3)}x ATR`);
             } else {
                 structSl = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
             }
@@ -599,13 +603,16 @@ export class MultiTimeframeAlignment {
             let baseTp: number;
 
             if (tpMode === "fixed_atr") {
-                const tpAtrMult = entryConfig.TP_ATR_MULTIPLIER ?? 2.0;
+                const estimatedFeePerc = entryConfig.ESTIMATED_FEE_PERCENT || 0.1;
+                const feeToAtrRatio = atrPercent > 0 ? estimatedFeePerc / atrPercent : 0.5;
+                const smartBufferBonus = parseFloat(Math.max(0.05, Math.min(0.25, 0.05 + (feeToAtrRatio * 0.36))).toFixed(3));
+                const tpAtrMult = (entryConfig.TP_ATR_MULTIPLIER ?? 2.0) + smartBufferBonus;
                 const rawTpPercent = atrPercent * tpAtrMult;
                 const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
                 const targetTpPrice = direction === "BUY" ? entryPrice * (1 + tpPercent / 100) : entryPrice * (1 - tpPercent / 100);
                 const tpTriggerFactor = 1 - (direction === "BUY" ? entryConfig.TP_TRIGGER_BUFFER_PERCENT : -entryConfig.TP_TRIGGER_BUFFER_PERCENT) / 100;
                 baseTp = targetTpPrice / tpTriggerFactor;
-                marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_atr | ${tpAtrMult}x ATR%=${rawTpPercent.toFixed(4)}% | Final TP%=${tpPercent.toFixed(4)}%`);
+                marketDetectorLogger.info(`[SmartBuffer-TP] ${entryConfig.SYMBOL} Mode: fixed_atr | Smart Buffer=+${smartBufferBonus}x ATR | Final TP Mult=${tpAtrMult.toFixed(3)}x ATR | Final TP%=${tpPercent.toFixed(4)}%`);
             } else if (tpMode === "fixed_rr") {
                 const targetRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.5);
                 const requiredNetReward = targetRr * netRisk;
