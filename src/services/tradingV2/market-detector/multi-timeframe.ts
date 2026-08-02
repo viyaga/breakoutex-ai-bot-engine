@@ -524,7 +524,9 @@ export class MultiTimeframeAlignment {
             } else if (slMode === "fixed_atr") {
                 const slAtrMult = entryConfig.SL_ATR_MULTIPLIER ?? 1.0;
                 const slAtrDist = atrDistance * slAtrMult;
-                structSl = direction === "BUY" ? (entryPrice - slAtrDist) : (entryPrice + slAtrDist);
+                const targetSlPrice = direction === "BUY" ? (entryPrice - slAtrDist) : (entryPrice + slAtrDist);
+                const slBufferFactor = 1 - (direction === "BUY" ? entryConfig.SL_TRIGGER_BUFFER_PERCENT : -entryConfig.SL_TRIGGER_BUFFER_PERCENT) / 100;
+                structSl = targetSlPrice / slBufferFactor;
             } else {
                 structSl = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
             }
@@ -554,8 +556,9 @@ export class MultiTimeframeAlignment {
                 );
             }
 
+            const slBaseLabel = slMode === "fixed_atr" ? "ATR SL Base" : (direction === "BUY" ? "Candle Low" : "Candle High");
             marketDetectorLogger.info(
-                `[CandleSL] ${entryConfig.SYMBOL} (${selectedTfName}, Mode:${slMode}) | Candle ${direction === "BUY" ? "Low" : "High"}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
+                `[CandleSL] ${entryConfig.SYMBOL} (${selectedTfName}, Mode:${slMode}) | ${slBaseLabel}=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Trigger Buffer=${entryConfig.SL_TRIGGER_BUFFER_PERCENT}% | Final SL=${sl}`
             );
 
             /* ================= SL CROSSING SAFETIES ================= */
@@ -599,8 +602,10 @@ export class MultiTimeframeAlignment {
                 const tpAtrMult = entryConfig.TP_ATR_MULTIPLIER ?? 2.0;
                 const rawTpPercent = atrPercent * tpAtrMult;
                 const tpPercent = Math.max(minTpPerc, Math.min(maxTpPerc, rawTpPercent));
+                const targetTpPrice = direction === "BUY" ? entryPrice * (1 + tpPercent / 100) : entryPrice * (1 - tpPercent / 100);
+                const tpTriggerFactor = 1 - (direction === "BUY" ? entryConfig.TP_TRIGGER_BUFFER_PERCENT : -entryConfig.TP_TRIGGER_BUFFER_PERCENT) / 100;
+                baseTp = targetTpPrice / tpTriggerFactor;
                 marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_atr | ${tpAtrMult}x ATR%=${rawTpPercent.toFixed(4)}% | Final TP%=${tpPercent.toFixed(4)}%`);
-                baseTp = direction === "BUY" ? entryPrice * (1 + tpPercent / 100) : entryPrice * (1 - tpPercent / 100);
             } else if (tpMode === "fixed_rr") {
                 const targetRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.5);
                 const requiredNetReward = targetRr * netRisk;
@@ -676,6 +681,11 @@ export class MultiTimeframeAlignment {
 
             tpPerc = entryPrice > 0 ? (rewardPriceDist / entryPrice) * 100 : 0;
             slPerc = entryPrice > 0 ? (riskPriceDist / entryPrice) * 100 : 0;
+
+            const rawPriceRr = riskPriceDist > 0 ? rewardPriceDist / riskPriceDist : 0;
+            marketDetectorLogger.info(
+                `[NaturalRR] ${entryConfig.SYMBOL} | Raw Price RR: ${rawPriceRr.toFixed(2)} | Net Fee-Adjusted RR: ${rr.toFixed(2)} (Price Risk: ${riskPriceDist.toFixed(entryConfig.PRICE_DECIMAL_PLACES)}, Net Risk: ${netRisk.toFixed(entryConfig.PRICE_DECIMAL_PLACES)}, Price Reward: ${rewardPriceDist.toFixed(entryConfig.PRICE_DECIMAL_PLACES)}, Net Reward: ${netReward.toFixed(entryConfig.PRICE_DECIMAL_PLACES)}, Fee: ${entryConfig.ESTIMATED_FEE_PERCENT}%)`
+            );
 
             /* ================= FORCED RR ADJUSTMENT IF RR < MIN_RR (MIN 1.0) ================= */
             const targetMinRr = Math.max(1.0, entryConfig.MIN_RR ?? 1.0);
