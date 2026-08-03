@@ -421,7 +421,7 @@ export class MultiTimeframeAlignment {
             let sourceCandles = confirmationCandles;
             let selectedTfName = entryConfig.CONFIRMATION_TIMEFRAME || "15m";
 
-            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter" || slMode === "fixed_atr") {
+            if (slMode === "active_tf" || slMode === "lookback_3" || slMode === "doji_filter" || slMode === "fixed_atr" || slMode === "hybrid") {
                 if (breakoutTimeframe === (entryConfig.TIMEFRAME || "5m") && entrySlPerc <= maxLimit) {
                     sourceCandle = entryTarget;
                     sourceCandles = entryCandles;
@@ -526,11 +526,48 @@ export class MultiTimeframeAlignment {
                 const slAtrDist = atrDistance * slAtrMult;
                 structSl = direction === "BUY" ? (entryPrice - slAtrDist) : (entryPrice + slAtrDist);
                 marketDetectorLogger.info(`[FixedATR-SL] ${entryConfig.SYMBOL}: ATR%=${atrPercent.toFixed(4)}% | Final SL Mult=${slAtrMult.toFixed(3)}x ATR`);
+            } else if (slMode === "hybrid") {
+                const slAtrMult = entryConfig.SL_ATR_MULTIPLIER ?? 1.4;
+                const minAtrDist = atrDistance * slAtrMult;
+                const maxAtrCapDist = atrDistance * (slAtrMult * 1.5); // Cap huge candle stops at 1.5x of ATR SL distance
+
+                const candleStructPrice = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
+                const triggerBufferPct = (entryConfig.SL_TRIGGER_BUFFER_PERCENT ?? 0.2) / 100;
+                const candleStructWithBuffer = direction === "BUY"
+                    ? candleStructPrice * (1 - triggerBufferPct)
+                    : candleStructPrice * (1 + triggerBufferPct);
+
+                if (direction === "BUY") {
+                    const minAtrSl = entryPrice - minAtrDist;
+                    const maxCapSl = entryPrice - maxAtrCapDist;
+
+                    let chosenSl = candleStructWithBuffer;
+                    if (chosenSl > minAtrSl) {
+                        chosenSl = minAtrSl; // Tiny candle: enforce ATR SL floor for breathing room
+                    } else if (chosenSl < maxCapSl) {
+                        chosenSl = maxCapSl; // Huge candle: cap loss at 1.5x ATR SL distance
+                    }
+                    structSl = chosenSl;
+                } else {
+                    const minAtrSl = entryPrice + minAtrDist;
+                    const maxCapSl = entryPrice + maxAtrCapDist;
+
+                    let chosenSl = candleStructWithBuffer;
+                    if (chosenSl < minAtrSl) {
+                        chosenSl = minAtrSl; // Tiny candle: enforce ATR SL floor for breathing room
+                    } else if (chosenSl > maxCapSl) {
+                        chosenSl = maxCapSl; // Huge candle: cap loss at 1.5x ATR SL distance
+                    }
+                    structSl = chosenSl;
+                }
+                marketDetectorLogger.info(
+                    `[Hybrid-SL] ${entryConfig.SYMBOL}: ATR%=${atrPercent.toFixed(4)}% | Structure SL=${candleStructWithBuffer.toFixed(entryConfig.PRICE_DECIMAL_PLACES)} | Final Hybrid SL=${structSl.toFixed(entryConfig.PRICE_DECIMAL_PLACES)}`
+                );
             } else {
                 structSl = direction === "BUY" ? sourceCandle.low : sourceCandle.high;
             }
 
-            if (slMode === "fixed_atr") {
+            if (slMode === "fixed_atr" || slMode === "hybrid") {
                 sl = structSl;
             } else if (direction === "BUY") {
                 sl = structSl * (1 - entryConfig.SL_TRIGGER_BUFFER_PERCENT / 100);
@@ -541,7 +578,7 @@ export class MultiTimeframeAlignment {
 
             // Smart SL Clamping: If natural SL distance exceeds maxLimit (1.5%), clamp SL to maxLimit to allow trade execution safely!
             const naturalSlDistancePerc = (Math.abs(entryPrice - sl) / entryPrice) * 100;
-            if (slMode !== "fixed_atr" && naturalSlDistancePerc > maxLimit) {
+            if (slMode !== "fixed_atr" && slMode !== "hybrid" && naturalSlDistancePerc > maxLimit) {
                 const cappedDist = entryPrice * (maxLimit / 100);
                 if (direction === "BUY") {
                     sl = entryPrice - cappedDist;

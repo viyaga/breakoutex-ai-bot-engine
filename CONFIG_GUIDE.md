@@ -27,7 +27,7 @@ This guide explains every configuration parameter in the trading engine, what it
 * **Usage:** Prevents winning trades from reversing into full Stop Loss losses.
 
 ### `SL_SELECTION_MODE`
-* **Type:** `"structure"` | `"lookback_3"` | `"doji_filter"` | `"active_tf"` | `"tightest"` | `"fixed_atr"`
+* **Type:** `"structure"` | `"lookback_3"` | `"doji_filter"` | `"active_tf"` | `"tightest"` | `"fixed_atr"` | `"hybrid"`
 * **Default:** `"structure"`
 * **Explanation:** Controls how the Stop Loss swing high/low anchor is chosen:
   1. **`"structure"`** ⭐: Anchors to 1h/15m structure candles. Filters out all 5m noise. Best for trend following.
@@ -36,6 +36,7 @@ This guide explains every configuration parameter in the trading engine, what it
   4. **`"active_tf"`**: Anchors strictly to the active breakout candle's swing level.
   5. **`"tightest"`**: Picks the shortest SL among all timeframes within maximum movement limits.
   6. **`"fixed_atr"`**: Anchors SL purely to ATR distance (`SL_ATR_MULTIPLIER` x ATR), ignoring candle highs/lows.
+  7. **`"hybrid"`**: Combines Market Structure (candle low/high) with an ATR floor (minimum `SL_ATR_MULTIPLIER` x ATR breathing room) and ATR cap (maximum `1.5x` ATR loss limit).
 
 ### `SL_ATR_MULTIPLIER`
 * **Type:** `number` (e.g. `1.0`, `1.5`, `2.0`)
