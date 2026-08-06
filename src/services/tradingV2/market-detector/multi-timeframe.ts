@@ -736,9 +736,9 @@ export class MultiTimeframeAlignment {
                 const initialTp = tp;
                 const initialSl = sl;
 
-                if (initialRr < 0.35) {
+                if (initialRr < 0.25) {
                     isPoorNaturalRr = true;
-                    marketDetectorLogger.warn(`[DynamicRR-Safety] ${entryConfig.SYMBOL}: Natural Risk/Reward (${initialRr.toFixed(2)}) is below minimum structure threshold (0.35). Trade rejected due to poor risk structure.`);
+                    marketDetectorLogger.warn(`[DynamicRR-Safety] ${entryConfig.SYMBOL}: Natural Risk/Reward (${initialRr.toFixed(2)}) is below minimum structure threshold (0.25). Trade rejected due to poor risk structure.`);
                 }
 
                 if (rrEnforcementMode === "sl") {
