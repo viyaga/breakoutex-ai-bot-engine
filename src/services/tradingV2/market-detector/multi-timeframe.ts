@@ -208,7 +208,7 @@ export class MultiTimeframeAlignment {
         let decision: TradeDecision = "SKIP";
 
         if (finalScore >= 75) decision = "STRONG_TRADE";
-        else if (finalScore >= 70) decision = "GOOD_TRADE";
+        else if (finalScore >= 65) decision = "GOOD_TRADE";
         else if (finalScore >= 50) decision = "WEAK_TRADE";
 
         const minEntry = entryConfig.MIN_ENTRY_SCORE ?? 60;
@@ -221,7 +221,7 @@ export class MultiTimeframeAlignment {
             rawConfirmationProbability >= Math.min(minConf, 55) &&
             structureProbability >= minStruct;
 
-        const minFinal = entryConfig.MIN_FINAL_SCORE ?? 70;
+        const minFinal = entryConfig.MIN_FINAL_SCORE ?? 65;
 
         // Preliminary permission based on score (Block trade if ATR% is under 0.08% dead market threshold)
         const isDeadMarket = atrPercent < 0.08;
@@ -652,8 +652,8 @@ export class MultiTimeframeAlignment {
                 marketDetectorLogger.info(`[TP-Selection] ${entryConfig.SYMBOL} Mode: fixed_rr | Target RR=${targetRr} | Base TP=${baseTp}`);
             } else {
                 // Enhanced Dynamic ATR: Score Scaled + HTF Trend Bonus + Volume Surge Bonus
-                const scoreFactor = Math.max(70, Math.min(90, finalScore));
-                const baseMultiplier = 1.0 + ((scoreFactor - 70) / 20) * 1.0; // 1.0x to 2.0x base
+                const scoreFactor = Math.max(65, Math.min(90, finalScore));
+                const baseMultiplier = 1.0 + ((scoreFactor - 65) / 25) * 1.0; // 1.0x to 2.0x base
 
                 // 1. HTF Trend Alignment Bonus (+0.3x for 1h/structure, +0.15x for 15m/confirmation)
                 let htfBonus = 0;

@@ -124,12 +124,12 @@ This guide explains every configuration parameter in the trading engine, what it
   * **1h (30% weight):** Macro market structure & EMA 20 trend alignment.
 
 ### `MIN_FINAL_SCORE`
-* **Type:** `number` (e.g. `70`)
-* **Default:** `70`
+* **Type:** `number` (e.g. `65`)
+* **Default:** `65`
 * **Explanation:** Minimum combined multi-timeframe score required to allow a trade.
   * `>= 75`: STRONG_TRADE
-  * `70–74`: GOOD_TRADE
-  * `< 70`: SKIP / REJECTED
+  * `65–74`: GOOD_TRADE
+  * `< 65`: SKIP / REJECTED
 
 ---
 
@@ -166,6 +166,6 @@ This guide explains every configuration parameter in the trading engine, what it
     IS_TP_REDUCTION_ENABLED: true,      // ✅ Dynamic TP Reduction
     IS_CANDLE_LIMIT_EXIT_ENABLED: true, // ✅ Time-based exit for dead trades
     IS_MOMENTUM_INVALIDATION_EXIT_ENABLED: true,
-    MIN_FINAL_SCORE: 70
+    MIN_FINAL_SCORE: 65
 }
 ```

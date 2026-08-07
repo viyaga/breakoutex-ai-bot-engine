@@ -74,7 +74,7 @@ export class TradingV2 {
             this.logMtfResult(symbol, currentPrice, mtf, c, loggers);
 
             // ───────────────── MULTIPLIER & STATE ─────────────────
-            const minFinal = c.MIN_FINAL_SCORE ?? 70;
+            const minFinal = c.MIN_FINAL_SCORE ?? 65;
             const scoreMultiplier = this.calculateScoreMultiplier(mtf, minFinal);
 
             let state = await Data.getOrCreateState(
