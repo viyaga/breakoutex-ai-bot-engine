@@ -118,6 +118,9 @@ export class Data {
             quantity = Math.max(1, TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1);
         }
 
+        const consecutiveLosses = lastClosed?.consecutiveLosses || 0;
+        const cooldownUntil = lastClosed?.cooldownUntil || null;
+
         // 3. Create a new open state
         st = await TradeState.create({
             tradingBotId,
@@ -133,7 +136,9 @@ export class Data {
             dailyLossLimitUSD,
             allTimePnl,
             allTimeFees,
-            quantity
+            quantity,
+            consecutiveLosses,
+            cooldownUntil
         });
 
         tradingCronLogger.info(`[Data] Created new active state for ${sym} (Inherited PnL: ${allTimePnl}, Quantity: ${quantity})`, { id: st._id });

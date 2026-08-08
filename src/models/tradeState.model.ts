@@ -39,6 +39,8 @@ export interface ITradeState {
     breakoutTimeframe?: string | null;
     entryFilledAt?: Date | null;
     consecutiveLowMomentumCycles?: number;
+    consecutiveLosses?: number;
+    cooldownUntil?: Date | null;
     lastTradeSettledAt?: Date | null;
     status: 'open' | 'closed';
     updatedAt: Date;
@@ -91,6 +93,8 @@ const TradeStateSchema: Schema = new Schema(
         breakoutTimeframe: { type: String, default: null },
         entryFilledAt: { type: Date, default: null },
         consecutiveLowMomentumCycles: { type: Number, default: 0 },
+        consecutiveLosses: { type: Number, default: 0 },
+        cooldownUntil: { type: Date, default: null },
     },
     {
         timestamps: true

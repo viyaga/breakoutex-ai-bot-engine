@@ -63,6 +63,9 @@ export class TradingConfig {
         MOMENTUM_INVALIDATION_STRUCTURE_THRESHOLD: 15,
         MOMENTUM_INVALIDATION_CONSECUTIVE_CYCLES: 2,
         IS_TP_REDUCTION_ENABLED: true,
+        CONSECUTIVE_LOSS_LIMIT: 3,
+        CONSECUTIVE_LOSS_COOLDOWN_MINUTES: 60 * 6,
+        IS_CONSECUTIVE_LOSS_COOLDOWN_ENABLED: true,
     }
 
     /* -------------------------------------------------------------------------

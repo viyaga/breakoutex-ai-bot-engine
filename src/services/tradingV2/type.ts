@@ -58,6 +58,9 @@ export interface ConfigType {
     MOMENTUM_INVALIDATION_STRUCTURE_THRESHOLD?: number;
     MOMENTUM_INVALIDATION_CONSECUTIVE_CYCLES?: number;
     IS_TP_REDUCTION_ENABLED?: boolean;
+    CONSECUTIVE_LOSS_LIMIT?: number;
+    CONSECUTIVE_LOSS_COOLDOWN_MINUTES?: number;
+    IS_CONSECUTIVE_LOSS_COOLDOWN_ENABLED?: boolean;
 }
 
 export type MarketEvaluationMode = "structure" | "confirmation" | "entry";

@@ -79,6 +79,8 @@ export class ProcessPendingState {
             structureProbability: null,
             tradingMode: null,
             consecutiveLowMomentumCycles: 0,
+            consecutiveLosses: 0,
+            cooldownUntil: null,
             entryFilledAt: null,
         };
     }
@@ -109,7 +111,9 @@ export class ProcessPendingState {
                 allTimeFees: (s.allTimeFees || 0) + incrementalFees,
                 lastTradeSettledAt: new Date(),
                 exitPrice,
-                pnlPercentage
+                pnlPercentage,
+                consecutiveLosses: 0,
+                cooldownUntil: null
             }
         }, { new: true });
 
@@ -132,11 +136,23 @@ export class ProcessPendingState {
         const logger = getContextualLogger(tradesLogger, logContext);
 
         const c = TradingConfig.getConfig();
+        const consecutiveLosses = (s.consecutiveLosses || 0) + 1;
+        const maxLosses = c.CONSECUTIVE_LOSS_LIMIT ?? 3;
+        const cooldownMins = c.CONSECUTIVE_LOSS_COOLDOWN_MINUTES ?? 60;
+        const isCooldownEnabled = c.IS_CONSECUTIVE_LOSS_COOLDOWN_ENABLED ?? true;
+
+        let cooldownUntil: Date | null = s.cooldownUntil ? new Date(s.cooldownUntil) : null;
+        if (isCooldownEnabled && consecutiveLosses >= maxLosses) {
+            cooldownUntil = new Date(Date.now() + cooldownMins * 60 * 1000);
+            logger.warn(
+                `[Cooldown] Triggered for ${s.symbol}: Reached ${consecutiveLosses} consecutive losses (Limit: ${maxLosses}). Trading paused for ${cooldownMins} minutes (Active until: ${cooldownUntil.toLocaleString()})`
+            );
+        }
 
         const pnlPercentage = s.tradeAmountInUse ? (incrementalPnl / s.tradeAmountInUse) * 100 : 0;
 
         const nextLevel = s.currentLevel + 1;
-        logger.info(`[StateTransition] Outcome: LOSS | Symbol: ${s.symbol} | Net Debt: ${netDebt.toFixed(2)} | Next Level: ${nextLevel}`);
+        logger.info(`[StateTransition] Outcome: LOSS | Symbol: ${s.symbol} | Net Debt: ${netDebt.toFixed(2)} | Next Level: ${nextLevel} | Consecutive Losses: ${consecutiveLosses}`);
         logger.info(`[StateTransition] LOSS Details: Incremental PnL: ${incrementalPnl.toFixed(2)}, Incremental Fees: ${incrementalFees.toFixed(2)}`);
 
         const updated = await TradeState.findByIdAndUpdate(s.id || (s as any)._id, {
@@ -151,7 +167,9 @@ export class ProcessPendingState {
                 allTimeFees: (s.allTimeFees || 0) + incrementalFees,
                 lastTradeSettledAt: new Date(),
                 exitPrice,
-                pnlPercentage
+                pnlPercentage,
+                consecutiveLosses,
+                cooldownUntil
             }
         }, { new: true });
 
