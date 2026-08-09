@@ -5,6 +5,7 @@ import { TradingConfig } from "./config";
 import { configDebugLogger, tradingCronLogger } from "./logger";
 import { ConfigType, ActiveSubscribedBot } from "./type";
 import { ProcessPendingState } from "./ProcessPendingState";
+import { Utils } from "./utils";
 import { decrypt } from "../../utils/crypto";
 
 import { ExchangeAdapterFactory } from "./adapters/exchange.factory";
@@ -45,11 +46,33 @@ export class Data {
                 await st.save();
             }
 
+            // 🗓 Check if dailyPnl on active open state needs to be reset for a new UTC day
+            const now = new Date();
+            const lastClosed = await TradeState.findOne({ tradingBotId, status: 'closed' })
+                .sort({ updatedAt: -1 });
+
+            const isLastClosedSameDay = Utils.isSameUtcDay(lastClosed?.updatedAt, now);
+            const expectedDailyPnl = isLastClosedSameDay ? (lastClosed?.dailyPnl || 0) : 0;
+            const cfg = TradingConfig.getConfig();
+            const dailyLossLimitUSD = cfg.CAPITAL_AMOUNT * (cfg.DAILY_LOSS_LIMIT / 100);
+
+            let stateNeedsSave = false;
+            if (st.dailyPnl !== expectedDailyPnl) {
+                tradingCronLogger.info(`[Data] Resetting dailyPnl for active open state ${sym}: ${st.dailyPnl} -> ${expectedDailyPnl}`);
+                st.dailyPnl = expectedDailyPnl;
+                stateNeedsSave = true;
+            }
+            if (st.dailyLossLimitUSD !== dailyLossLimitUSD) {
+                st.dailyLossLimitUSD = dailyLossLimitUSD;
+                stateNeedsSave = true;
+            }
+            if (stateNeedsSave) {
+                await st.save();
+            }
+
             // If we have an active open state but haven't placed an entry order yet,
             // recalculate the quantity based on the current price, current config, and multiplier.
             if (!st.entryOrderId) {
-                const lastClosed = await TradeState.findOne({ tradingBotId, status: 'closed' })
-                    .sort({ updatedAt: -1 });
                 const isLoss = lastClosed?.tradeOutcome === 'loss';
 
                 let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
@@ -85,11 +108,7 @@ export class Data {
 
         // 🗓 Daily PnL Reset Logic (UTC)
         const now = new Date();
-        const lastUpdate = lastClosed?.updatedAt ? new Date(lastClosed.updatedAt) : null;
-        const isSameDay = lastUpdate &&
-            lastUpdate.getUTCDate() === now.getUTCDate() &&
-            lastUpdate.getUTCMonth() === now.getUTCMonth() &&
-            lastUpdate.getUTCFullYear() === now.getUTCFullYear();
+        const isSameDay = Utils.isSameUtcDay(lastClosed?.updatedAt, now);
 
         const dailyPnl = isSameDay ? (lastClosed?.dailyPnl || 0) : 0;
 

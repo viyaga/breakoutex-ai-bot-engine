@@ -100,16 +100,28 @@ export class ProcessPendingState {
 
         const pnlPercentage = s.tradeAmountInUse ? (incrementalPnl / s.tradeAmountInUse) * 100 : 0;
 
-        const updated = await TradeState.findByIdAndUpdate(s.id || (s as any)._id, {
+        const now = new Date();
+        const currentDocId = s.id || (s as any)._id;
+        const lastClosedBefore = await TradeState.findOne({
+            tradingBotId: s.tradingBotId,
+            status: 'closed',
+            _id: { $ne: currentDocId }
+        }).sort({ updatedAt: -1 });
+
+        const isPreviousClosedToday = Utils.isSameUtcDay(lastClosedBefore?.updatedAt, now);
+        const baseDailyPnl = isPreviousClosedToday ? (lastClosedBefore?.dailyPnl || 0) : 0;
+        const newDailyPnl = baseDailyPnl + incrementalPnl - incrementalFees;
+
+        const updated = await TradeState.findByIdAndUpdate(currentDocId, {
             $set: {
                 status: 'closed',
                 tradeOutcome: "win",
                 pnl: winPnl,
                 cumulativeFees: tempFees,
-                dailyPnl: (s.dailyPnl || 0) + incrementalPnl - incrementalFees,
+                dailyPnl: newDailyPnl,
                 allTimePnl: (s.allTimePnl || 0) + incrementalPnl,
                 allTimeFees: (s.allTimeFees || 0) + incrementalFees,
-                lastTradeSettledAt: new Date(),
+                lastTradeSettledAt: now,
                 exitPrice,
                 pnlPercentage,
                 consecutiveLosses: 0,
@@ -155,17 +167,29 @@ export class ProcessPendingState {
         logger.info(`[StateTransition] Outcome: LOSS | Symbol: ${s.symbol} | Net Debt: ${netDebt.toFixed(2)} | Next Level: ${nextLevel} | Consecutive Losses: ${consecutiveLosses}`);
         logger.info(`[StateTransition] LOSS Details: Incremental PnL: ${incrementalPnl.toFixed(2)}, Incremental Fees: ${incrementalFees.toFixed(2)}`);
 
-        const updated = await TradeState.findByIdAndUpdate(s.id || (s as any)._id, {
+        const now = new Date();
+        const currentDocId = s.id || (s as any)._id;
+        const lastClosedBefore = await TradeState.findOne({
+            tradingBotId: s.tradingBotId,
+            status: 'closed',
+            _id: { $ne: currentDocId }
+        }).sort({ updatedAt: -1 });
+
+        const isPreviousClosedToday = Utils.isSameUtcDay(lastClosedBefore?.updatedAt, now);
+        const baseDailyPnl = isPreviousClosedToday ? (lastClosedBefore?.dailyPnl || 0) : 0;
+        const newDailyPnl = baseDailyPnl + incrementalPnl - incrementalFees;
+
+        const updated = await TradeState.findByIdAndUpdate(currentDocId, {
             $set: {
                 status: 'closed',
                 currentLevel: nextLevel,
                 tradeOutcome: "loss",
                 pnl,
                 cumulativeFees: fees,
-                dailyPnl: (s.dailyPnl || 0) + incrementalPnl - incrementalFees,
+                dailyPnl: newDailyPnl,
                 allTimePnl: (s.allTimePnl || 0) + incrementalPnl,
                 allTimeFees: (s.allTimeFees || 0) + incrementalFees,
-                lastTradeSettledAt: new Date(),
+                lastTradeSettledAt: now,
                 exitPrice,
                 pnlPercentage,
                 consecutiveLosses,

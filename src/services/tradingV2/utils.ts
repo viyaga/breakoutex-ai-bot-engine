@@ -31,6 +31,18 @@ export class Utils {
     static isTradePending(s: ITradeState) { return s.tradeOutcome === "pending"; }
     static isTradeResolved(s: ITradeState) { return s.tradeOutcome !== "pending"; }
 
+    static isSameUtcDay(d1: Date | string | number | null | undefined, d2: Date | string | number = new Date()): boolean {
+        if (!d1) return false;
+        const date1 = new Date(d1);
+        const date2 = new Date(d2);
+        if (isNaN(date1.getTime()) || isNaN(date2.getTime())) return false;
+        return (
+            date1.getUTCDate() === date2.getUTCDate() &&
+            date1.getUTCMonth() === date2.getUTCMonth() &&
+            date1.getUTCFullYear() === date2.getUTCFullYear()
+        );
+    }
+
     static resolveEntryPrice(e?: any): number {
         const price =
             e?.average_fill_price ??
