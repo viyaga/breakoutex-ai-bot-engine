@@ -3,7 +3,7 @@ import path from "path";
 import util from "util";
 
 const LOG_DIR = path.join(process.cwd(), "logs");
-const MAX_LOG_FILES = 10;
+const MAX_LOG_FILES = 20;
 const FILE_PATTERN = /^cycle_\d{8}_\d{6}\.log$/; // matches cycle_YYYYMMDD_HHmmss.log
 
 let activeLogFile: string | null = null;
