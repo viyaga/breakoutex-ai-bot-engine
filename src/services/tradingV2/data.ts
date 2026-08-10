@@ -89,7 +89,7 @@ export class Data {
                 }
 
                 if (st.quantity !== quantity) {
-                    tradingCronLogger.info(`[Data] Updating pending entry quantity from ${st.quantity} to ${quantity} for ${sym}`);
+                    tradingCronLogger.info(`[Data] Updating DB trade state baseline quantity (unplaced entry) from ${st.quantity} to ${quantity} for ${sym}`);
                     st.quantity = quantity;
                     await st.save();
                 }

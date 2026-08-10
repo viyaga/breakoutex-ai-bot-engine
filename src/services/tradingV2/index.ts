@@ -86,10 +86,12 @@ export class TradingV2 {
                 currentPrice
             );
 
+            const cooldownStr = state.cooldownUntil && new Date(state.cooldownUntil) > new Date()
+                ? `Active until ${new Date(state.cooldownUntil).toISOString()}`
+                : "None";
+
             loggers.cronLogger.info(
-                `[State] Loaded state: ID=${state.id}, Level=${state.currentLevel
-                }, DailyPnL=$${state.dailyPnl.toFixed(2)}, Outcome=${state.tradeOutcome}, Status=${state.status
-                }`
+                `[State] Loaded state: ID=${state.id}, Level=${state.currentLevel}, ConsLosses=${state.consecutiveLosses || 0}, Cooldown=${cooldownStr}, DailyPnL=$${state.dailyPnl.toFixed(2)}, Outcome=${state.tradeOutcome}, Status=${state.status}`
             );
 
             // ───────────────── HANDLE PENDING TRADE ─────────────────

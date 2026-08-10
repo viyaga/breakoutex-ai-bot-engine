@@ -49,7 +49,7 @@ export class DeltaExchangeAdapter implements IExchangeAdapter {
             config.PRODUCT_ID = Number(p.id || bot.PRODUCT_ID);
             config.SYMBOL = p.symbol;
 
-            tradingCronLogger.info(`[DeltaAdapter] ✓ Configured bot ${config.id} [${rawSymbol}] (ID: ${p.id}, Decimals: ${decimals}, Lot: ${config.LOT_SIZE})`);
+            tradingCronLogger.info(`[DeltaAdapter] ✓ Configured bot ${config.id}: Symbol normalized ${rawSymbol} -> ${config.SYMBOL} (Delta Product ID: ${p.id}, Decimals: ${decimals}, Lot: ${config.LOT_SIZE})`);
         } else {
             tradingCronLogger.warn(`[DeltaAdapter] ⚠ No product metadata available for bot ${config.id} [${rawSymbol}]`);
         }
