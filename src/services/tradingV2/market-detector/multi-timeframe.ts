@@ -101,12 +101,20 @@ export class MultiTimeframeAlignment {
 
         const symbol = entryConfig.SYMBOL;
 
-        // 🔥 FALLBACK TO 15M BREAKOUT: If 5m entry has no breakout, but 15m confirmation does, inherit direction from 15m
+        // 🔥 FALLBACK TO HIGHER TIMEFRAME BREAKOUT (Priority: 1h Structure > 15m Confirmation):
+        // If 5m entry has no breakout, inherit direction from higher timeframe breakouts
         let isDirectionFromConfirmation = false;
-        if (direction === "NONE" && confirmationBreakout.direction !== "NONE") {
-            direction = confirmationBreakout.direction;
-            isDirectionFromConfirmation = true;
-            marketDetectorLogger.info(`${evalTag} ${symbol}: No 5m breakout. Inheriting 15m confirmation breakout direction instead: ${direction}`);
+        let isDirectionFromStructure = false;
+        if (direction === "NONE") {
+            if (structureBreakout.direction !== "NONE") {
+                direction = structureBreakout.direction;
+                isDirectionFromStructure = true;
+                marketDetectorLogger.info(`${evalTag} ${symbol}: No 5m breakout. Inheriting 1h structure breakout direction instead: ${direction}`);
+            } else if (confirmationBreakout.direction !== "NONE") {
+                direction = confirmationBreakout.direction;
+                isDirectionFromConfirmation = true;
+                marketDetectorLogger.info(`${evalTag} ${symbol}: No 5m breakout. Inheriting 15m confirmation breakout direction instead: ${direction}`);
+            }
         }
 
         // 🔥 TESTING OVERRIDE: If testing and no breakout, force BUY
