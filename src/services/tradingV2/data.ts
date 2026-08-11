@@ -74,9 +74,10 @@ export class Data {
             // recalculate the quantity based on the current price, current config, and multiplier.
             if (!st.entryOrderId) {
                 const isLoss = lastClosed?.tradeOutcome === 'loss';
+                const isRecoveryModeEnabled = TradingConfig.getConfig().IS_RECOVERY_MODE_ENABLED !== false;
 
                 let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
-                if (isLoss && currentPrice > 0) {
+                if (isLoss && isRecoveryModeEnabled && currentPrice > 0) {
                     const netDebt = (lastClosed?.pnl || 0) - (lastClosed?.cumulativeFees || 0);
                     quantity = ProcessPendingState.calculateMartingaleLots(netDebt, currentPrice, multiplier);
                     tradingCronLogger.info(`[Data] Recalculated recovery quantity for pending entry on ${sym}: ${quantity} (Level: ${st.currentLevel}, NetDebt: ${netDebt.toFixed(2)}, Multiplier: ${multiplier})`);
@@ -117,16 +118,17 @@ export class Data {
 
         // If the last session was a loss, we inherit its level and calculate next recovery quantity
         const isLoss = lastClosed?.tradeOutcome === 'loss';
+        const isRecoveryModeEnabled = cfg.IS_RECOVERY_MODE_ENABLED !== false;
         const currentLevel = isLoss ? (lastClosed?.currentLevel || 1) : 1;
         const sessionPnl = isLoss ? (lastClosed?.pnl || 0) : 0;
         const sessionFees = isLoss ? (lastClosed?.cumulativeFees || 0) : 0;
 
         let quantity = TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1;
-        if (isLoss && currentPrice > 0) {
+        if (isLoss && isRecoveryModeEnabled && currentPrice > 0) {
             const netDebt = sessionPnl - sessionFees;
             quantity = ProcessPendingState.calculateMartingaleLots(netDebt, currentPrice, multiplier);
             tradingCronLogger.info(`[Data] Calculated recovery quantity for ${sym}: ${quantity} (Level: ${currentLevel}, NetDebt: ${netDebt.toFixed(2)}, Multiplier: ${multiplier})`);
-        } else if (isLoss) {
+        } else if (isLoss && isRecoveryModeEnabled) {
             // Fallback to previous quantity if currentPrice is not available (safety)
             quantity = lastClosed?.quantity || quantity;
             tradingCronLogger.warn(`[Data] Falling back to previous quantity for ${sym} due to missing price: ${quantity}`);

@@ -11,7 +11,11 @@ export class ProcessPendingState {
 
     static calculateMartingaleLots(netDebt: number, currentPrice: number, multiplier: number): number {
         const c = TradingConfig.getConfig();
-        const targetAmount = Math.abs(netDebt) * multiplier; // Dynamic multiplier based on MTF score
+        if (c.IS_RECOVERY_MODE_ENABLED === false) {
+            return c.INITIAL_BASE_QUANTITY ?? 1;
+        }
+        const effectiveMultiplier = c.IS_RECOVERY_MULTIPLIER_ENABLED === false ? 1.0 : multiplier;
+        const targetAmount = Math.abs(netDebt) * effectiveMultiplier; // Dynamic multiplier based on MTF score
         const marginRequiredPerLot = (currentPrice * c.LOT_SIZE) / c.LEVERAGE;
         return (c.INITIAL_BASE_QUANTITY ?? 0) + Math.ceil(
             targetAmount / marginRequiredPerLot

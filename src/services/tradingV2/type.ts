@@ -31,6 +31,8 @@ export interface ConfigType {
     DRY_RUN: boolean;
     IS_TESTING: boolean;
     IS_TRAILING_SL_ENABLED?: boolean;
+    IS_RECOVERY_MODE_ENABLED?: boolean;
+    IS_RECOVERY_MULTIPLIER_ENABLED?: boolean;
     SL_SELECTION_MODE?: "active_tf" | "structure" | "tightest" | "lookback_3" | "doji_filter" | "fixed_atr" | "hybrid";
     TP_SELECTION_MODE?: "dynamic_atr" | "fixed_atr" | "fixed_rr";
     SL_ATR_MULTIPLIER?: number;
@@ -323,6 +325,8 @@ export interface ActiveSubscribedBot {
     MAX_CONCURRENT_TRADES: number
     CAPITAL_AMOUNT: number
     IS_WEEKEND_SAFETY_ENABLED?: boolean
+    IS_RECOVERY_MODE_ENABLED?: boolean
+    IS_RECOVERY_MULTIPLIER_ENABLED?: boolean
     IS_CANDLE_LIMIT_EXIT_ENABLED?: boolean
     MAX_HOLDING_CANDLES_MAP?: Record<string, number>
 }

@@ -39,6 +39,8 @@ export class TradingConfig {
         DRY_RUN: false,
         IS_TESTING: process.env.IS_TESTING === "true",
         IS_TRAILING_SL_ENABLED: false,
+        IS_RECOVERY_MODE_ENABLED: true,
+        IS_RECOVERY_MULTIPLIER_ENABLED: true,
         SL_SELECTION_MODE: "hybrid",
         TP_SELECTION_MODE: "fixed_atr",
         SL_ATR_MULTIPLIER: 1.4,
