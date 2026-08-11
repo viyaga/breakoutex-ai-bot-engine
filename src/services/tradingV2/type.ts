@@ -16,7 +16,7 @@ export interface ConfigType {
     STRUCTURE_TIMEFRAME: string,
     LEVERAGE: number,
     INITIAL_BASE_QUANTITY?: number,
-    MAX_QUANTITY?: number,
+    MAX_QUANTITY: number,
     MIN_TRADE_SIZE: number,
     MAX_TRADE_SIZE: number,
     DAILY_LOSS_LIMIT: number,

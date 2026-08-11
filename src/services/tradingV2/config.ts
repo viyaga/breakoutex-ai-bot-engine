@@ -29,6 +29,7 @@ export class TradingConfig {
         TP_TRIGGER_BUFFER_PERCENT: 0.2,
         TP_LIMIT_BUFFER_PERCENT: 0.3,
         MAX_ALLOWED_PRICE_MOVEMENT_PERCENT: 1.5,
+        MAX_QUANTITY: 10,
         MIN_RR: 1.0,
         MIN_RR_ENFORCEMENT_MODE: "tp",
         MIN_SL_SAFETY_BUFFER_PERCENT: 0.2,
