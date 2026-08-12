@@ -7,7 +7,8 @@ import {
     marketDetectorLogger,
     getContextualLogger,
     tradesLogger,
-    mtfAllowedLogger
+    mtfAllowedLogger,
+    logPermanentHighScore
 } from "./logger";
 import { ConfigType, TargetCandle, Candle, OrderSide } from "./type";
 import { Utils } from "./utils";
@@ -230,6 +231,12 @@ export class TradingV2 {
         loggers.cronLogger.info(
             `[MTF] Result: Score=${mtf.finalScore}, Direction=${mtf.direction}, Decision=${mtf.decision}, Allowed=${mtf.isAllowed}`
         );
+
+        if (mtf.finalScore > 60) {
+            logPermanentHighScore(
+                `[SCORE > 60] Symbol: ${symbol} | BotID: ${c.id} | Exchange: ${c.EXCHANGE || "delta"} | FinalScore: ${mtf.finalScore} (Entry: ${mtf.entryScore}, Conf: ${mtf.confirmationProbability}, Struct: ${mtf.structureProbability}) | Direction: ${mtf.direction} | Decision: ${mtf.decision} | Price: ${currentPrice} | TP: ${mtf.tp} (${mtf.tpPerc?.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc?.toFixed(2)}%) | RR: ${mtf.rr?.toFixed(2)} | Allowed: ${mtf.isAllowed}`
+            );
+        }
 
         if (mtf.isAllowed) {
             loggers.detectorLogger.info(

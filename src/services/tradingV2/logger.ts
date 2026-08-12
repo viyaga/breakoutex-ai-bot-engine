@@ -1,4 +1,95 @@
 import util from "util";
+import fs from "fs";
+import path from "path";
+
+export const HIGH_SCORE_LOG_DIR = path.join(process.cwd(), "logs", "high_scores");
+export const MAX_HIGH_SCORE_LOG_FILES = 10;
+
+/**
+ * Rotates log files in HIGH_SCORE_LOG_DIR to keep at most MAX_HIGH_SCORE_LOG_FILES (10).
+ * Oldest log files are deleted if total files exceeds MAX_HIGH_SCORE_LOG_FILES.
+ */
+export const rotateHighScoreLogs = (): void => {
+    try {
+        if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) return;
+
+        const files = fs.readdirSync(HIGH_SCORE_LOG_DIR);
+        const logFiles = files
+            .map(f => {
+                const filePath = path.join(HIGH_SCORE_LOG_DIR, f);
+                let time = 0;
+                try {
+                    const stat = fs.statSync(filePath);
+                    if (!stat.isFile()) return null;
+                    time = stat.mtimeMs;
+                } catch {
+                    return null;
+                }
+                return { name: f, path: filePath, time };
+            })
+            .filter((item): item is { name: string; path: string; time: number } => item !== null)
+            .sort((a, b) => a.time - b.time); // Oldest first
+
+        if (logFiles.length > MAX_HIGH_SCORE_LOG_FILES) {
+            const deleteCount = logFiles.length - MAX_HIGH_SCORE_LOG_FILES;
+            for (let i = 0; i < deleteCount; i++) {
+                try {
+                    fs.unlinkSync(logFiles[i].path);
+                } catch (unlinkErr) {
+                    console.error(`Failed to delete old high score log file ${logFiles[i].name}:`, unlinkErr);
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Error rotating high score logs:", err);
+    }
+};
+
+/**
+ * Returns path to the current high score log file (timestamped by date YYYYMMDD).
+ */
+export const getHighScoreLogPath = (date: Date = new Date()): string => {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    return path.join(HIGH_SCORE_LOG_DIR, `high_score_${year}${month}${day}.log`);
+};
+
+/**
+ * Logs entries to logs/high_scores directory.
+ * Stores up to a maximum of 10 files in HIGH_SCORE_LOG_DIR. Old log files are automatically deleted.
+ */
+export const logHighScore = (message: string, meta?: any): void => {
+    try {
+        if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) {
+            fs.mkdirSync(HIGH_SCORE_LOG_DIR, { recursive: true });
+        }
+
+        rotateHighScoreLogs();
+
+        const logFilePath = getHighScoreLogPath();
+        const timestamp = new Date().toISOString();
+        let logLine = `${timestamp} ${message}`;
+        if (meta) {
+            if (meta instanceof Error) {
+                logLine += `\n${meta.stack || meta.message}`;
+            } else if (Object.keys(meta).length > 0) {
+                logLine += ` ${util.inspect(meta, { depth: 4 })}`;
+            }
+        }
+        const cleanLine = logLine.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
+        fs.appendFileSync(logFilePath, cleanLine + "\n");
+
+        rotateHighScoreLogs();
+    } catch (err) {
+        console.error("Failed to write to high score log:", err);
+    }
+};
+
+/**
+ * @deprecated Use logHighScore instead. Retained for backward compatibility.
+ */
+export const logPermanentHighScore = logHighScore;
 
 const createConsoleLogger = (serviceName: string) => {
     const log = (level: string, message: string, meta?: any) => {
