@@ -1,7 +1,8 @@
-﻿import { ActiveSubscribedBot, CancelAllOrdersFilter, ConfigType, OrderDetails, OrderSide, TickerData } from "../type";
+import { ActiveSubscribedBot, CancelAllOrdersFilter, ConfigType, OrderDetails, OrderSide, TickerData } from "../type";
 import { IExchangeAdapter } from "./IExchangeAdapter";
 import { tradingCronLogger } from "../logger";
 import { decrypt } from "../../../utils/crypto";
+import { TradingConfig } from "../config";
 
 /**
  * AngelOneAdapter — Implements IExchangeAdapter for AngelOne SmartAPI.
@@ -26,12 +27,10 @@ export class AngelOneAdapter implements IExchangeAdapter {
 
     prepareConfig(
         bot: ActiveSubscribedBot,
-        defaultConfig: Partial<ConfigType>,
+        _defaultConfig: Partial<ConfigType>,
         _productDataMap: Map<string, any>
     ): ConfigType {
-        const config: ConfigType = {
-            ...defaultConfig,
-            ...bot,
+        const adapterSpecs: Partial<ConfigType> = {
             id: bot.id,
             EXCHANGE: this.exchangeName,
             API_KEY: decrypt(bot.API_KEY),
@@ -40,12 +39,11 @@ export class AngelOneAdapter implements IExchangeAdapter {
             LOT_SIZE: 1,
             PRODUCT_ID: Number(bot.PRODUCT_ID) || 0,
             SYMBOL: bot.SYMBOL,
-        } as ConfigType;
+            PRICE_DECIMAL_PLACES: 2,
+        };
 
-        if (!config.PRICE_DECIMAL_PLACES) config.PRICE_DECIMAL_PLACES = 2;
-
-        tradingCronLogger.info(`[AngelOneAdapter] ✓ Configured bot ${config.id} [${bot.SYMBOL}]`);
-        return config;
+        tradingCronLogger.info(`[AngelOneAdapter] ✓ Configured bot ${bot.id} [${bot.SYMBOL}]`);
+        return TradingConfig.buildConfig(bot, adapterSpecs);
     }
 
     async getCandlestickData(symbol: string, resolution: string, start: number, end: number): Promise<any> {

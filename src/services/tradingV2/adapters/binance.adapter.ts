@@ -3,6 +3,7 @@ import { ActiveSubscribedBot, CancelAllOrdersFilter, ConfigType, OrderDetails, O
 import { IExchangeAdapter } from "./IExchangeAdapter";
 import { decrypt } from "../../../utils/crypto";
 import { tradingCronLogger } from "../logger";
+import { TradingConfig } from "../config";
 
 export class BinanceExchangeAdapter implements IExchangeAdapter {
     readonly exchangeName = "binance";
@@ -23,9 +24,7 @@ export class BinanceExchangeAdapter implements IExchangeAdapter {
     ): ConfigType {
         const rawSymbol = bot.SYMBOL;
 
-        const config: ConfigType = {
-            ...defaultConfig,
-            ...bot,
+        const adapterSpecs: Partial<ConfigType> = {
             id: bot.id,
             EXCHANGE: this.exchangeName,
             API_KEY: decrypt(bot.API_KEY),
@@ -36,14 +35,11 @@ export class BinanceExchangeAdapter implements IExchangeAdapter {
             LOT_SIZE: 1,
             PRODUCT_ID: Number(bot.PRODUCT_ID) || 0,
             SYMBOL: rawSymbol,
-        } as ConfigType;
+            PRICE_DECIMAL_PLACES: 2,
+        };
 
-        if (!config.PRICE_DECIMAL_PLACES) {
-            config.PRICE_DECIMAL_PLACES = 2;
-        }
-
-        tradingCronLogger.info(`[BinanceAdapter] ✓ Configured bot ${config.id} [${rawSymbol}]`);
-        return config;
+        tradingCronLogger.info(`[BinanceAdapter] ✓ Configured bot ${bot.id} [${rawSymbol}]`);
+        return TradingConfig.buildConfig(bot, adapterSpecs);
     }
 
     async getCandlestickData(symbol: string, resolution: string, start: number, end: number): Promise<any> {

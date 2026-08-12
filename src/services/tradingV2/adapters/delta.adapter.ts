@@ -3,6 +3,7 @@ import { ActiveSubscribedBot, CancelAllOrdersFilter, ConfigType, OrderDetails, O
 import { IExchangeAdapter } from "./IExchangeAdapter";
 import { decrypt } from "../../../utils/crypto";
 import { tradingCronLogger } from "../logger";
+import { TradingConfig } from "../config";
 
 export class DeltaExchangeAdapter implements IExchangeAdapter {
     readonly exchangeName = "delta";
@@ -26,9 +27,7 @@ export class DeltaExchangeAdapter implements IExchangeAdapter {
         const mappedSymbol = this.mapSymbol(rawSymbol);
         const deltaBaseUrl = defaultConfig.BASE_URL || "https://api.india.delta.exchange/v2";
 
-        const config: ConfigType = {
-            ...defaultConfig,
-            ...bot,
+        const adapterSpecs: Partial<ConfigType> = {
             id: bot.id,
             EXCHANGE: this.exchangeName,
             API_KEY: decrypt(bot.API_KEY),
@@ -36,7 +35,7 @@ export class DeltaExchangeAdapter implements IExchangeAdapter {
             TRADING_MODE: bot.TRADING_MODE === ("safe" as any) ? "conservative" : bot.TRADING_MODE,
             IS_WEEKEND_SAFETY_ENABLED: bot.IS_WEEKEND_SAFETY_ENABLED !== false,
             BASE_URL: deltaBaseUrl,
-        } as ConfigType;
+        };
 
         const p = productDataMap.get(mappedSymbol);
         if (p) {
@@ -44,17 +43,17 @@ export class DeltaExchangeAdapter implements IExchangeAdapter {
                 ? p.tick_size.split('.')[1].length
                 : 0;
 
-            config.PRICE_DECIMAL_PLACES = decimals;
-            config.LOT_SIZE = Number(p.contract_value);
-            config.PRODUCT_ID = Number(p.id || bot.PRODUCT_ID);
-            config.SYMBOL = p.symbol;
+            adapterSpecs.PRICE_DECIMAL_PLACES = decimals;
+            adapterSpecs.LOT_SIZE = Number(p.contract_value);
+            adapterSpecs.PRODUCT_ID = Number(p.id || bot.PRODUCT_ID);
+            adapterSpecs.SYMBOL = p.symbol;
 
-            tradingCronLogger.info(`[DeltaAdapter] ✓ Configured bot ${config.id}: Symbol normalized ${rawSymbol} -> ${config.SYMBOL} (Delta Product ID: ${p.id}, Decimals: ${decimals}, Lot: ${config.LOT_SIZE})`);
+            tradingCronLogger.info(`[DeltaAdapter] ✓ Configured bot ${bot.id}: Symbol normalized ${rawSymbol} -> ${p.symbol} (Delta Product ID: ${p.id}, Decimals: ${decimals}, Lot: ${adapterSpecs.LOT_SIZE})`);
         } else {
-            tradingCronLogger.warn(`[DeltaAdapter] ⚠ No product metadata available for bot ${config.id} [${rawSymbol}]`);
+            tradingCronLogger.warn(`[DeltaAdapter] ⚠ No product metadata available for bot ${bot.id} [${rawSymbol}]`);
         }
 
-        return config;
+        return TradingConfig.buildConfig(bot, adapterSpecs);
     }
 
     async getCandlestickData(symbol: string, resolution: string, start: number, end: number): Promise<any> {

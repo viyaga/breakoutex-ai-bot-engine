@@ -71,17 +71,46 @@ export class TradingConfig {
         IS_CONSECUTIVE_LOSS_COOLDOWN_ENABLED: true,
     }
 
+    /* ------------------------------------------------------------------------
+       OVERRIDDEN CONFIG (Highest priority — overrides defaultConfig & API config)
+    ------------------------------------------------------------------------- */
+    static overridedConfig: Partial<ConfigType> = {};
+
+    /**
+     * Centralized config builder ensuring strict priority order:
+     * 1. Base Default Config (lowest priority)
+     * 2. Bot API Config / Input Custom Configs
+     * 3. Overrided Config (HIGHEST PRIORITY - overrides everything)
+     */
+    static buildConfig(...configs: (Record<string, any> | undefined)[]): ConfigType {
+        const merged: Record<string, any> = {
+            ...this.defaultConfig,
+        };
+
+        for (const cfg of configs) {
+            if (cfg) {
+                Object.assign(merged, cfg);
+            }
+        }
+
+        // Apply overridedConfig with top priority
+        if (this.overridedConfig && Object.keys(this.overridedConfig).length > 0) {
+            Object.assign(merged, this.overridedConfig);
+        }
+
+        return merged as ConfigType;
+    }
+
     /* -------------------------------------------------------------------------
        CONFIG RESOLVER
     ---------------------------------------------------------------------------- */
-    static getConfig(user_id?: string, product_symbol?: string): ConfigType {
-
+    static getConfig(_user_id?: string, _product_symbol?: string): ConfigType {
         const stored = this.configStore.getStore();
 
         if (stored) {
             return stored;
         }
 
-        throw new Error("No config found");
+        return this.buildConfig();
     }
 }

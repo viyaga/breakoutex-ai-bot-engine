@@ -45,12 +45,8 @@ router.post('/trigger-cycle', async (req: Request, res: Response) => {
         // Extract config from request body
         const customConfig: Partial<ConfigType> = req.body.config || {};
 
-        // Get base config and merge with custom config
-        const baseConfig = TradingConfig.getConfig();
-        const mergedConfig: ConfigType = {
-            ...baseConfig,
-            ...customConfig
-        };
+        // Merge defaultConfig, customConfig, and TradingConfig.overridedConfig
+        const mergedConfig: ConfigType = TradingConfig.buildConfig(customConfig);
 
         tradingCronLogger.info(`[API] Manual trigger received at ${timestamp}`);
         tradingCronLogger.debug(`[API] Using config:`, {
