@@ -39,7 +39,7 @@ export class TradingConfig {
         DRY_RUN: false,
         IS_TESTING: process.env.IS_TESTING === "true",
         IS_TRAILING_SL_ENABLED: false,
-        IS_RECOVERY_MODE_ENABLED: true,
+        IS_RECOVERY_MODE_ENABLED: false,
         IS_RECOVERY_MULTIPLIER_ENABLED: true,
         SL_SELECTION_MODE: "lookback_3",
         TP_SELECTION_MODE: "fixed_atr",
@@ -74,7 +74,9 @@ export class TradingConfig {
     /* ------------------------------------------------------------------------
        OVERRIDDEN CONFIG (Highest priority — overrides defaultConfig & API config)
     ------------------------------------------------------------------------- */
-    static overridedConfig: Partial<ConfigType> = {};
+    static overridedConfig: Partial<ConfigType> = {
+        IS_RECOVERY_MODE_ENABLED: false
+    };
 
     /**
      * Centralized config builder ensuring strict priority order:
