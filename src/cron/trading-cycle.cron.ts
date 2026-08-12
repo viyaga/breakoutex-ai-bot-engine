@@ -22,7 +22,7 @@ const tradingCycleCronJob = (): void => {
         let totalFailed = 0;
         let offset = 0;
         const LIMIT = 100; // Reduced for better stability
-        const CONCURRENCY = 2; // Max parallel bots (Reduced to prevent API timeouts)
+        const CONCURRENCY_PER_EXCHANGE = env.concurrencyPerExchange || 2; // Max parallel bots per exchange
 
         tradingCronLogger.info(`${'='.repeat(80)}`);
         tradingCronLogger.info(`[TradingCron] ========== CYCLE START ==========`);
@@ -47,16 +47,26 @@ const tradingCycleCronJob = (): void => {
                     break;
                 }
 
-                tradingCronLogger.info(`[TradingCron] Processing batch of ${configs.length} configs with CONCURRENCY=${CONCURRENCY}...`);
+                // 1. Group configs by exchange (e.g., 'delta', 'binance')
+                const configsByExchange = configs.reduce((acc, cfg) => {
+                    const exchange = (cfg.EXCHANGE || "delta").toLowerCase();
+                    if (!acc[exchange]) acc[exchange] = [];
+                    acc[exchange].push(cfg);
+                    return acc;
+                }, {} as Record<string, typeof configs>);
 
-                // 🚀 Concurrency-limited execution pool
-                const processWithLimit = async (cfgs: any[]) => {
-                    const results: any[] = [];
+                const exchangeList = Object.keys(configsByExchange);
+                tradingCronLogger.info(`[TradingCron] Processing batch of ${configs.length} configs across ${exchangeList.length} exchange(s) (${exchangeList.join(", ")}) with CONCURRENCY_PER_EXCHANGE=${CONCURRENCY_PER_EXCHANGE}...`);
+
+                // 2. Concurrency-limited execution pool per exchange
+                const processExchangeGroup = async (exchangeName: string, exchangeConfigs: typeof configs) => {
+                    tradingCronLogger.info(`[TradingCron] Starting pool for exchange '${exchangeName}' with ${exchangeConfigs.length} bot(s) (Concurrency=${CONCURRENCY_PER_EXCHANGE})...`);
+                    const groupResults: Array<{ config: typeof configs[0]; result: { status: 'fulfilled'; value: any } | { status: 'rejected'; reason: any } }> = [];
                     const executing = new Set<Promise<any>>();
 
-                    for (const cfg of cfgs) {
+                    for (const cfg of exchangeConfigs) {
                         const p = (async () => {
-                            tradingCronLogger.info(`[TradingCron] Starting cycle for config: ${cfg.id} (${cfg.SYMBOL})`);
+                            tradingCronLogger.info(`[TradingCron] Starting cycle for config: ${cfg.id} (${cfg.SYMBOL} on ${cfg.EXCHANGE})`);
                             try {
                                 const res = await TradingConfig.configStore.run(cfg, () => TradingV2.runTradingCycle(cfg));
                                 return { status: 'fulfilled' as const, value: res };
@@ -65,28 +75,38 @@ const tradingCycleCronJob = (): void => {
                             }
                         })();
 
-                        results.push(p);
+                        const recordPromise = p.then(res => {
+                            groupResults.push({ config: cfg, result: res });
+                        });
+
                         executing.add(p);
                         p.finally(() => executing.delete(p));
 
-                        if (executing.size >= CONCURRENCY) {
+                        if (executing.size >= CONCURRENCY_PER_EXCHANGE) {
                             await Promise.race(executing);
                         }
                     }
-                    return Promise.all(results);
+
+                    await Promise.all(executing);
+                    return groupResults;
                 };
 
-                const results = await processWithLimit(configs);
+                // 3. Run exchange pools in parallel
+                const exchangePromises = Object.entries(configsByExchange).map(([exchangeName, exchangeConfigs]) =>
+                    processExchangeGroup(exchangeName, exchangeConfigs)
+                );
+
+                const exchangeResultsNested = await Promise.all(exchangePromises);
+                const allResults = exchangeResultsNested.flat();
 
                 // Count successes and failures
-                results.forEach((result, index) => {
-                    const config = configs[index];
+                allResults.forEach(({ config, result }) => {
                     if (result.status === 'fulfilled') {
                         totalSucceeded++;
-                        tradingCronLogger.info(`[TradingCron] ✓ Config ${config.id} (${config.SYMBOL}) completed successfully`);
+                        tradingCronLogger.info(`[TradingCron] ✓ Config ${config.id} (${config.SYMBOL} on ${config.EXCHANGE}) completed successfully`);
                     } else {
                         totalFailed++;
-                        tradingCronLogger.error(`[TradingCron] ✗ Config ${config.id} (${config.SYMBOL}) failed:`, { reason: result.reason?.message || result.reason });
+                        tradingCronLogger.error(`[TradingCron] ✗ Config ${config.id} (${config.SYMBOL} on ${config.EXCHANGE}) failed:`, { reason: result.reason?.message || result.reason });
                     }
                 });
 

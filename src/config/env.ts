@@ -30,6 +30,7 @@ interface EnvConfig {
     payloadUrl: string;
     payloadApiKey: string;
     serverIp: string;
+    concurrencyPerExchange: number;
 }
 
 const env: EnvConfig = {
@@ -38,7 +39,8 @@ const env: EnvConfig = {
     cronSchedule: process.env.CRON_SCHEDULE || '*/5 * * * *',
     payloadUrl: process.env.PAYLOAD_URL || 'http://localhost:4000',
     payloadApiKey: process.env.PAYLOAD_API_KEY || '',
-    serverIp: process.env.SERVER_IP || '127.0.0.1'
+    serverIp: process.env.SERVER_IP || '127.0.0.1',
+    concurrencyPerExchange: parseInt(process.env.CONCURRENCY_PER_EXCHANGE || '2', 10),
 };
 
 export default env;
