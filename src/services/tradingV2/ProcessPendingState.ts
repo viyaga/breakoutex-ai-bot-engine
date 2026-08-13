@@ -147,18 +147,22 @@ export class ProcessPendingState {
         incrementalFees: number,
         multiplier: number,
         exitPrice: number,
-        logContext?: any
+        logContext?: any,
+        isTpHit: boolean = false // TP hit does NOT count as a consecutive loss
     ): Promise<ITradeState> {
         const logger = getContextualLogger(tradesLogger, logContext);
 
         const c = TradingConfig.getConfig();
-        const consecutiveLosses = (s.consecutiveLosses || 0) + 1;
+        // Only increment consecutive losses when the SL was hit (not TP).
+        // A TP hit means the market moved in our favour — even if overall session is still in debt.
+        const consecutiveLosses = isTpHit ? (s.consecutiveLosses || 0) : (s.consecutiveLosses || 0) + 1;
         const maxLosses = c.CONSECUTIVE_LOSS_LIMIT ?? 3;
         const cooldownMins = c.CONSECUTIVE_LOSS_COOLDOWN_MINUTES ?? 60;
         const isCooldownEnabled = c.IS_CONSECUTIVE_LOSS_COOLDOWN_ENABLED ?? true;
 
         let cooldownUntil: Date | null = s.cooldownUntil ? new Date(s.cooldownUntil) : null;
-        if (isCooldownEnabled && consecutiveLosses >= maxLosses) {
+        // Only trigger cooldown for SL hits, not TP hits
+        if (!isTpHit && isCooldownEnabled && consecutiveLosses >= maxLosses) {
             cooldownUntil = new Date(Date.now() + cooldownMins * 60 * 1000);
             logger.warn(
                 `[Cooldown] Triggered for ${s.symbol}: Reached ${consecutiveLosses} consecutive losses (Limit: ${maxLosses}). Trading paused for ${cooldownMins} minutes (Active until: ${cooldownUntil.toLocaleString()})`
@@ -276,9 +280,10 @@ export class ProcessPendingState {
 
             logger.info(`[PositionOutcome] TAKE PROFIT reached for ${s.symbol}. Incremental PnL: ${incrementalPnl.toFixed(4)}, Fees: ${incrementalFees.toFixed(4)}, Exit Price: ${exitPrice}, Net Debt: ${netDebt.toFixed(4)}`);
 
+            // TP hit = WIN for consecutive-loss tracking, even if session netDebt is still negative
             return netDebt >= 0
                 ? await this.handleWin(s, netPnl, fees, incrementalPnl, incrementalFees, exitPrice, logContext)
-                : await this.handleLoss(s, netDebt, netPnl, fees, currentPrice, incrementalPnl, incrementalFees, multiplier, exitPrice, logContext);
+                : await this.handleLoss(s, netDebt, netPnl, fees, currentPrice, incrementalPnl, incrementalFees, multiplier, exitPrice, logContext, true /* isTpHit */);
         }
 
         const sl = await adapter.getOrderDetails(s.stopLossOrderId);
