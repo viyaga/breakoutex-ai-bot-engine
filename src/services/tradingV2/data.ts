@@ -139,8 +139,12 @@ export class Data {
             quantity = Math.max(1, TradingConfig.getConfig().INITIAL_BASE_QUANTITY || 1);
         }
 
-        const consecutiveLosses = lastClosed?.consecutiveLosses || 0;
-        const cooldownUntil = lastClosed?.cooldownUntil || null;
+        // If the cooldown period has expired, reset consecutive losses and cooldownUntil
+        // so that trades after the waiting period start fresh without immediately re-triggering cooldown.
+        const lastCooldownUntil = lastClosed?.cooldownUntil ? new Date(lastClosed.cooldownUntil) : null;
+        const isCooldownExpired = lastCooldownUntil && lastCooldownUntil <= now;
+        const consecutiveLosses = isCooldownExpired ? 0 : (lastClosed?.consecutiveLosses || 0);
+        const cooldownUntil = isCooldownExpired ? null : (lastClosed?.cooldownUntil || null);
 
         // 3. Create a new open state
         st = await TradeState.create({
