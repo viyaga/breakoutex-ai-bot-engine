@@ -6,15 +6,22 @@ import {
     getHighScoreLogPath,
     rotateHighScoreLogs,
     HIGH_SCORE_LOG_DIR,
-    MAX_HIGH_SCORE_LOG_FILES
+    MAX_HIGH_SCORE_LOG_FILES,
+    CycleLogCollector
 } from "./services/tradingV2/logger";
 
 async function testHighScoreLogger() {
     console.log("=== TESTING HIGH SCORE LOGGER & MAX 10 FILES ROTATION ===");
 
-    // Test 1: Logging a high score entry
-    const testMessage = "[TEST-LOG] Symbol: ETHUSD | BotID: test_bot_99 | FinalScore: 72.0 (Entry: 75, Conf: 70, Struct: 70) | Direction: BUY | Allowed: true";
-    logPermanentHighScore(testMessage);
+    // Test 1: Logging a high score entry with full server log trace
+    const collector = new CycleLogCollector();
+    collector.addLog("2026-08-14T07:34:27.500Z [INFO] [trading-cron]: [TradingCycle] START PROCESSING BOT: ETHUSD");
+    collector.addLog("2026-08-14T07:34:27.600Z [INFO] [market-detector]: [MTF-NewEntry] Sub-scores: Entry=75, Conf=70, Struct=70");
+
+    const summaryMessage = "[TEST-LOG] Symbol: ETHUSD | BotID: test_bot_99 | FinalScore: 72.0 (Entry: 75, Conf: 70, Struct: 70) | Direction: BUY | Allowed: true";
+    const fullLogMessage = `${summaryMessage}\n--- FULL SERVER LOG TRACE (cycle-test) ---\n${collector.getFormattedTrace()}\n--------------------------------------------------------------------------------`;
+
+    logPermanentHighScore(fullLogMessage);
 
     const logFile = getHighScoreLogPath();
     console.log("\n[Test 1] Current High Score Log File:", logFile);
@@ -25,11 +32,11 @@ async function testHighScoreLogger() {
     }
 
     const content = fs.readFileSync(logFile, "utf-8");
-    if (!content.includes("FinalScore: 72.0")) {
-        console.error("❌ Test 1 FAILED: Log content missing test message!");
+    if (!content.includes("FinalScore: 72.0") || !content.includes("FULL SERVER LOG TRACE")) {
+        console.error("❌ Test 1 FAILED: Log content missing test message or full server log trace!");
         process.exit(1);
     }
-    console.log("✅ [Test 1] High score log file created and verified successfully!");
+    console.log("✅ [Test 1] High score log file created with full server log trace successfully!");
 
     // Test 2: Rotation limit test (Create 15 dummy log files in HIGH_SCORE_LOG_DIR and verify max 10 retained)
     console.log("\n[Test 2] Testing log file rotation limit (max 10 files)...");
@@ -86,7 +93,7 @@ async function testHighScoreLogger() {
     for (const file of filesAfter) {
         fs.unlinkSync(path.join(HIGH_SCORE_LOG_DIR, file));
     }
-    logHighScore(testMessage);
+    logHighScore(fullLogMessage);
 
     console.log("\n✅ ALL HIGH SCORE LOGGER TESTS PASSED SUCCESSFULLY!");
 }

@@ -8,7 +8,8 @@ import {
     getContextualLogger,
     tradesLogger,
     mtfAllowedLogger,
-    logPermanentHighScore
+    logPermanentHighScore,
+    CycleLogCollector
 } from "./logger";
 import { ConfigType, TargetCandle, Candle, OrderSide } from "./type";
 import { Utils } from "./utils";
@@ -47,8 +48,9 @@ export class TradingV2 {
     static async runTradingCycle(c: ConfigType): Promise<void> {
         const { id: tradingBotId, SYMBOL: symbol, USER_ID: userId } = c;
         const cycleId = `cycle-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const collector = new CycleLogCollector();
 
-        const loggers = this.getContextLoggers(c, cycleId);
+        const loggers = this.getContextLoggers(c, cycleId, collector);
         loggers.cronLogger.info(
             `[TradingCycle] ========== START PROCESSING BOT: ${symbol} (ID: ${tradingBotId}) ==========`
         );
@@ -71,8 +73,8 @@ export class TradingV2 {
             }
 
             // ───────────────── MULTI TIMEFRAME ALIGNMENT ─────────────────
-            const mtf = this.evaluateMtf(marketData, c, cycleId, tradingBotId);
-            this.logMtfResult(symbol, currentPrice, mtf, c, loggers);
+            const mtf = this.evaluateMtf(marketData, c, cycleId, tradingBotId, undefined, collector);
+            this.logMtfResult(symbol, currentPrice, mtf, c, loggers, collector, cycleId);
 
             // ───────────────── MULTIPLIER & STATE ─────────────────
             const minFinal = c.MIN_FINAL_SCORE ?? 65;
@@ -150,6 +152,9 @@ export class TradingV2 {
                     c.TIMEFRAME
                 ))
             ) {
+                loggers.skipLogger.info(`[MarketRegime] SKIP: Price trend moving opposite of trade direction (${side})`, {
+                    timeframe: c.TIMEFRAME
+                });
                 return;
             }
 
@@ -161,7 +166,7 @@ export class TradingV2 {
                 return;
             }
 
-            // ───────────────── EXECUTE ORDER ─────────────────
+            // ───────────────── ORDER EXECUTION ─────────────────
             await OrderExecutor.placeTrade(
                 c,
                 state,
@@ -180,15 +185,16 @@ export class TradingV2 {
        PRIVATE HELPERS
     ========================================================================= */
 
-    private static getContextLoggers(c: ConfigType, cycleId: string) {
+    private static getContextLoggers(c: ConfigType, cycleId: string, collector?: CycleLogCollector) {
         const { id: tradingBotId, SYMBOL: symbol } = c;
+        const context = { cycleId, symbol, tradingBotId, collector };
         return {
-            cronLogger: getContextualLogger(tradingCronLogger, { cycleId, symbol, tradingBotId }),
-            skipLogger: getContextualLogger(skipTradingLogger, { cycleId, symbol, tradingBotId }),
-            errorLogger: getContextualLogger(tradingCycleErrorLogger, { cycleId, symbol, tradingBotId }),
-            detectorLogger: getContextualLogger(marketDetectorLogger, { cycleId, symbol, tradingBotId }),
-            tradeLogger: getContextualLogger(tradesLogger, { cycleId, symbol, tradingBotId }),
-            mtfAllowedFileLogger: getContextualLogger(mtfAllowedLogger, { cycleId, symbol, tradingBotId })
+            cronLogger: getContextualLogger(tradingCronLogger, context),
+            skipLogger: getContextualLogger(skipTradingLogger, context),
+            errorLogger: getContextualLogger(tradingCycleErrorLogger, context),
+            detectorLogger: getContextualLogger(marketDetectorLogger, context),
+            tradeLogger: getContextualLogger(tradesLogger, context),
+            mtfAllowedFileLogger: getContextualLogger(mtfAllowedLogger, context)
         };
     }
 
@@ -197,7 +203,8 @@ export class TradingV2 {
         c: ConfigType,
         cycleId: string,
         tradingBotId: string,
-        positionSideOverride?: OrderSide
+        positionSideOverride?: OrderSide,
+        collector?: CycleLogCollector
     ) {
         const configConfirmation: ConfigType = { ...c, TIMEFRAME: c.CONFIRMATION_TIMEFRAME };
         const configStructure: ConfigType = { ...c, TIMEFRAME: c.STRUCTURE_TIMEFRAME };
@@ -213,7 +220,7 @@ export class TradingV2 {
             configConfirmation,
             configStructure,
             marketData.currentPrice,
-            { cycleId, tradingBotId },
+            { cycleId, tradingBotId, collector },
             positionSideOverride
         );
     }
@@ -223,7 +230,9 @@ export class TradingV2 {
         currentPrice: number,
         mtf: any,
         c: ConfigType,
-        loggers: ReturnType<typeof TradingV2.getContextLoggers>
+        loggers: ReturnType<typeof TradingV2.getContextLoggers>,
+        collector?: CycleLogCollector,
+        cycleId?: string
     ) {
         loggers.detectorLogger.info(
             `[MTF-RESULT] ${symbol}: Score=${mtf.finalScore}, Direction=${mtf.direction}, Decision=${mtf.decision}, Allowed=${mtf.isAllowed}`
@@ -233,9 +242,14 @@ export class TradingV2 {
         );
 
         if (mtf.finalScore > 60) {
-            logPermanentHighScore(
-                `[SCORE > 60] Symbol: ${symbol} | BotID: ${c.id} | Exchange: ${c.EXCHANGE || "delta"} | FinalScore: ${mtf.finalScore} (Entry: ${mtf.entryScore}, Conf: ${mtf.confirmationProbability}, Struct: ${mtf.structureProbability}) | Direction: ${mtf.direction} | Decision: ${mtf.decision} | Price: ${currentPrice} | TP: ${mtf.tp} (${mtf.tpPerc?.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc?.toFixed(2)}%) | RR: ${mtf.rr?.toFixed(2)} | Allowed: ${mtf.isAllowed}`
-            );
+            const summary = `[SCORE > 60] Symbol: ${symbol} | BotID: ${c.id} | Exchange: ${c.EXCHANGE || "delta"} | FinalScore: ${mtf.finalScore} (Entry: ${mtf.entryScore}, Conf: ${mtf.confirmationProbability}, Struct: ${mtf.structureProbability}) | Direction: ${mtf.direction} | Decision: ${mtf.decision} | Price: ${currentPrice} | TP: ${mtf.tp} (${mtf.tpPerc?.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc?.toFixed(2)}%) | RR: ${mtf.rr?.toFixed(2)} | Allowed: ${mtf.isAllowed}`;
+
+            const serverTrace = collector?.getFormattedTrace();
+            const logEntry = serverTrace
+                ? `${summary}\n--- FULL SERVER LOG TRACE (${cycleId || "N/A"}) ---\n${serverTrace}\n--------------------------------------------------------------------------------`
+                : summary;
+
+            logPermanentHighScore(logEntry);
         }
 
         if (mtf.isAllowed) {

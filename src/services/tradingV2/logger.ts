@@ -59,6 +59,30 @@ export const getHighScoreLogPath = (date: Date = new Date()): string => {
  * Logs entries to logs/high_scores directory.
  * Stores up to a maximum of 10 files in HIGH_SCORE_LOG_DIR. Old log files are automatically deleted.
  */
+export class CycleLogCollector {
+    private logs: string[] = [];
+
+    addLog(formattedMessage: string): void {
+        this.logs.push(formattedMessage);
+    }
+
+    getLogs(): string[] {
+        return [...this.logs];
+    }
+
+    getFormattedTrace(): string {
+        return this.logs.join("\n");
+    }
+
+    clear(): void {
+        this.logs = [];
+    }
+}
+
+/**
+ * Logs entries to logs/high_scores directory.
+ * Stores up to a maximum of 10 files in HIGH_SCORE_LOG_DIR. Old log files are automatically deleted.
+ */
 export const logHighScore = (message: string, meta?: any): void => {
     try {
         if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) {
@@ -73,6 +97,8 @@ export const logHighScore = (message: string, meta?: any): void => {
         if (meta) {
             if (meta instanceof Error) {
                 logLine += `\n${meta.stack || meta.message}`;
+            } else if (typeof meta === "string") {
+                logLine += `\n${meta}`;
             } else if (Object.keys(meta).length > 0) {
                 logLine += ` ${util.inspect(meta, { depth: 4 })}`;
             }
@@ -95,13 +121,29 @@ const createConsoleLogger = (serviceName: string) => {
     const log = (level: string, message: string, meta?: any) => {
         const timestamp = new Date().toISOString();
         let msg = `${timestamp} [${level.toUpperCase()}] [${serviceName}]: ${message}`;
-        if (meta) {
-            if (meta instanceof Error) {
-                msg += `\n${meta.stack || meta.message}`;
-            } else if (Object.keys(meta).length > 0) {
-                msg += ` ${util.inspect(meta, { depth: 4 })}`;
+        
+        const collector: CycleLogCollector | undefined = meta?.collector;
+
+        let displayMeta = meta;
+        if (meta && typeof meta === "object" && !(meta instanceof Error) && "collector" in meta) {
+            const { collector: _, ...rest } = meta;
+            displayMeta = Object.keys(rest).length > 0 ? rest : undefined;
+        }
+
+        if (displayMeta) {
+            if (displayMeta instanceof Error) {
+                msg += `\n${displayMeta.stack || displayMeta.message}`;
+            } else if (typeof displayMeta === "string") {
+                msg += `\n${displayMeta}`;
+            } else if (Object.keys(displayMeta).length > 0) {
+                msg += ` ${util.inspect(displayMeta, { depth: 4 })}`;
             }
         }
+
+        if (collector) {
+            collector.addLog(msg);
+        }
+
         if (level === "error") {
             console.error(msg);
         } else if (level === "warn") {
@@ -131,7 +173,7 @@ export const placedOrdersLogger = createConsoleLogger("placed-orders");
 
 export const getContextualLogger = (
     logger: ReturnType<typeof createConsoleLogger>,
-    context: { cycleId?: string; symbol?: string; tradingBotId?: string } = {}
+    context: { cycleId?: string; symbol?: string; tradingBotId?: string; collector?: CycleLogCollector } = {}
 ) => {
     const wrap = (fn: Function) => (message: string, meta?: any) => {
         if (meta instanceof Error) {
