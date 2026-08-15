@@ -242,14 +242,9 @@ export class TradingV2 {
         );
 
         if (mtf.finalScore > 60) {
-            const summary = `[SCORE > 60] Symbol: ${symbol} | BotID: ${c.id} | Exchange: ${c.EXCHANGE || "delta"} | FinalScore: ${mtf.finalScore} (Entry: ${mtf.entryScore}, Conf: ${mtf.confirmationProbability}, Struct: ${mtf.structureProbability}) | Direction: ${mtf.direction} | Decision: ${mtf.decision} | Price: ${currentPrice} | TP: ${mtf.tp} (${mtf.tpPerc?.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc?.toFixed(2)}%) | RR: ${mtf.rr?.toFixed(2)} | Allowed: ${mtf.isAllowed}`;
-
-            const serverTrace = collector?.getFormattedTrace();
-            const logEntry = serverTrace
-                ? `${summary}\n--- FULL SERVER LOG TRACE (${cycleId || "N/A"}) ---\n${serverTrace}\n--------------------------------------------------------------------------------`
-                : summary;
-
-            logPermanentHighScore(logEntry);
+            const summary = `[HIGH SCORE > 60] Symbol: ${symbol} | BotID: ${c.id} | Exchange: ${c.EXCHANGE || "delta"} | FinalScore: ${mtf.finalScore} (Entry: ${mtf.entryScore}, Conf: ${mtf.confirmationProbability}, Struct: ${mtf.structureProbability}) | Direction: ${mtf.direction} | Decision: ${mtf.decision} | Price: ${currentPrice} | TP: ${mtf.tp} (${mtf.tpPerc?.toFixed(2)}%) | SL: ${mtf.sl} (${mtf.slPerc?.toFixed(2)}%) | RR: ${mtf.rr?.toFixed(2)} | Allowed: ${mtf.isAllowed}`;
+            loggers.cronLogger.info(`[HIGH SCORE DETECTED] ${summary}. Copying active normal log file to high scores directory...`);
+            logPermanentHighScore(summary, { details: { symbol, score: mtf.finalScore } });
         }
 
         if (mtf.isAllowed) {

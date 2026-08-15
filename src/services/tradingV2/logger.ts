@@ -1,6 +1,7 @@
 import util from "util";
 import fs from "fs";
 import path from "path";
+import { promoteCurrentCycleToHighScore } from "../../utils/cycleLogger";
 
 export const HIGH_SCORE_LOG_DIR = path.join(process.cwd(), "logs", "high_scores");
 export const MAX_HIGH_SCORE_LOG_FILES = 10;
@@ -85,6 +86,11 @@ export class CycleLogCollector {
  */
 export const logHighScore = (message: string, meta?: any): void => {
     try {
+        // Attempt to promote exact active cycle log file if active
+        const details = meta?.details || (typeof meta === "object" && meta?.symbol ? meta : undefined);
+        const promoted = promoteCurrentCycleToHighScore(details);
+        if (promoted) return;
+
         if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) {
             fs.mkdirSync(HIGH_SCORE_LOG_DIR, { recursive: true });
         }
@@ -99,7 +105,7 @@ export const logHighScore = (message: string, meta?: any): void => {
                 logLine += `\n${meta.stack || meta.message}`;
             } else if (typeof meta === "string") {
                 logLine += `\n${meta}`;
-            } else if (Object.keys(meta).length > 0) {
+            } else if (Object.keys(meta).length > 0 && !meta.collector && !meta.details) {
                 logLine += ` ${util.inspect(meta, { depth: 4 })}`;
             }
         }
@@ -116,6 +122,7 @@ export const logHighScore = (message: string, meta?: any): void => {
  * @deprecated Use logHighScore instead. Retained for backward compatibility.
  */
 export const logPermanentHighScore = logHighScore;
+
 
 const createConsoleLogger = (serviceName: string) => {
     const log = (level: string, message: string, meta?: any) => {

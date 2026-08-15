@@ -98,6 +98,99 @@ function writeToLog(text: string): void {
     }
 }
 
+const HIGH_SCORE_LOG_DIR = path.join(process.cwd(), "logs", "high_scores");
+const MAX_HIGH_SCORE_LOG_FILES = 10;
+
+/**
+ * Returns active cycle log file path.
+ */
+export function getActiveLogFilePath(): string | null {
+    return activeLogFile;
+}
+
+/**
+ * Rotates log files in HIGH_SCORE_LOG_DIR to retain at most MAX_HIGH_SCORE_LOG_FILES (10).
+ * Oldest log files are deleted if total count exceeds MAX_HIGH_SCORE_LOG_FILES.
+ */
+export function rotateHighScoreLogs(): void {
+    try {
+        if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) return;
+
+        const files = fs.readdirSync(HIGH_SCORE_LOG_DIR);
+        const logFiles = files
+            .map(f => {
+                const filePath = path.join(HIGH_SCORE_LOG_DIR, f);
+                let time = 0;
+                try {
+                    const stat = fs.statSync(filePath);
+                    if (!stat.isFile()) return null;
+                    time = stat.mtimeMs;
+                } catch {
+                    return null;
+                }
+                return { name: f, path: filePath, time };
+            })
+            .filter((item): item is { name: string; path: string; time: number } => item !== null)
+            .sort((a, b) => a.time - b.time); // Oldest first
+
+        if (logFiles.length > MAX_HIGH_SCORE_LOG_FILES) {
+            const deleteCount = logFiles.length - MAX_HIGH_SCORE_LOG_FILES;
+            for (let i = 0; i < deleteCount; i++) {
+                try {
+                    fs.unlinkSync(logFiles[i].path);
+                } catch (unlinkErr) {
+                    if (originalError) {
+                        originalError(`Failed to delete old high score log file ${logFiles[i].name}:`, unlinkErr);
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        if (originalError) {
+            originalError("Error rotating high score logs:", err);
+        }
+    }
+}
+
+/**
+ * Copies the current active normal cycle log file into the high score logs directory (logs/high_scores/).
+ * Enforces max 10 files retention in logs/high_scores/.
+ */
+export function promoteCurrentCycleToHighScore(details?: { symbol?: string; score?: number }): string | null {
+    try {
+        if (!activeLogFile || !fs.existsSync(activeLogFile)) {
+            if (originalError) {
+                originalError("Cannot promote cycle to high score: active log file does not exist.");
+            }
+            return null;
+        }
+
+        if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) {
+            fs.mkdirSync(HIGH_SCORE_LOG_DIR, { recursive: true });
+        }
+
+        const basename = path.basename(activeLogFile, ".log"); // e.g. cycle_20260815_110000
+        const symbolTag = details?.symbol ? `_${details.symbol.replace(/[^a-zA-Z0-9]/g, "")}` : "";
+        const scoreTag = details?.score !== undefined ? `_score${Math.round(details.score)}` : "";
+
+        const destFileName = `high_score_${basename}${symbolTag}${scoreTag}.log`;
+        const destPath = path.join(HIGH_SCORE_LOG_DIR, destFileName);
+
+        // Copy exact normal cycle log file
+        fs.copyFileSync(activeLogFile, destPath);
+
+        // Enforce max 10 files rotation
+        rotateHighScoreLogs();
+
+        return destPath;
+    } catch (err) {
+        if (originalError) {
+            originalError("Failed to promote cycle log to high score directory:", err);
+        }
+        return null;
+    }
+}
+
 /**
  * Retains only the most recent (MAX_LOG_FILES - 1) log files to allow space for the new cycle log.
  */

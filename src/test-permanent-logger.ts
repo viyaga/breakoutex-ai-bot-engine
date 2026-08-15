@@ -3,50 +3,62 @@ import path from "path";
 import {
     logHighScore,
     logPermanentHighScore,
-    getHighScoreLogPath,
     rotateHighScoreLogs,
     HIGH_SCORE_LOG_DIR,
-    MAX_HIGH_SCORE_LOG_FILES,
-    CycleLogCollector
+    MAX_HIGH_SCORE_LOG_FILES
 } from "./services/tradingV2/logger";
+import {
+    startCycleLogging,
+    endCycleLogging,
+    promoteCurrentCycleToHighScore,
+    getActiveLogFilePath
+} from "./utils/cycleLogger";
 
 async function testHighScoreLogger() {
     console.log("=== TESTING HIGH SCORE LOGGER & MAX 10 FILES ROTATION ===");
 
-    // Test 1: Logging a high score entry with full server log trace
-    const collector = new CycleLogCollector();
-    collector.addLog("2026-08-14T07:34:27.500Z [INFO] [trading-cron]: [TradingCycle] START PROCESSING BOT: ETHUSD");
-    collector.addLog("2026-08-14T07:34:27.600Z [INFO] [market-detector]: [MTF-NewEntry] Sub-scores: Entry=75, Conf=70, Struct=70");
+    // Clean high_scores directory first
+    if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) {
+        fs.mkdirSync(HIGH_SCORE_LOG_DIR, { recursive: true });
+    }
+    const initFiles = fs.readdirSync(HIGH_SCORE_LOG_DIR);
+    for (const f of initFiles) {
+        fs.unlinkSync(path.join(HIGH_SCORE_LOG_DIR, f));
+    }
 
-    const summaryMessage = "[TEST-LOG] Symbol: ETHUSD | BotID: test_bot_99 | FinalScore: 72.0 (Entry: 75, Conf: 70, Struct: 70) | Direction: BUY | Allowed: true";
-    const fullLogMessage = `${summaryMessage}\n--- FULL SERVER LOG TRACE (cycle-test) ---\n${collector.getFormattedTrace()}\n--------------------------------------------------------------------------------`;
+    // Test 1: Promoting an active normal cycle log file to high scores
+    console.log("\n[Test 1] Testing normal cycle log promotion to high scores...");
+    startCycleLogging();
 
-    logPermanentHighScore(fullLogMessage);
+    const testConsoleMessage = "[CYCLE LOG MSG] 2026-08-15 - Processing MTF analysis for BTCUSD with high score 85";
+    console.log(testConsoleMessage);
 
-    const logFile = getHighScoreLogPath();
-    console.log("\n[Test 1] Current High Score Log File:", logFile);
-
-    if (!fs.existsSync(logFile)) {
-        console.error("❌ Test 1 FAILED: High score log file was not created!");
+    const activeFile = getActiveLogFilePath();
+    if (!activeFile || !fs.existsSync(activeFile)) {
+        console.error("❌ Test 1 FAILED: Active normal log file was not created!");
         process.exit(1);
     }
 
-    const content = fs.readFileSync(logFile, "utf-8");
-    if (!content.includes("FinalScore: 72.0") || !content.includes("FULL SERVER LOG TRACE")) {
-        console.error("❌ Test 1 FAILED: Log content missing test message or full server log trace!");
+    const promotedPath = promoteCurrentCycleToHighScore({ symbol: "BTCUSD", score: 85 });
+    endCycleLogging();
+
+    if (!promotedPath || !fs.existsSync(promotedPath)) {
+        console.error("❌ Test 1 FAILED: High score promoted log file was not created!");
         process.exit(1);
     }
-    console.log("✅ [Test 1] High score log file created with full server log trace successfully!");
+
+    const content = fs.readFileSync(promotedPath, "utf-8");
+    if (!content.includes(testConsoleMessage)) {
+        console.error("❌ Test 1 FAILED: Promoted high score log does not contain exact normal log output!");
+        process.exit(1);
+    }
+
+    console.log(`✅ [Test 1] Exact normal log file successfully copied to high score: ${path.basename(promotedPath)}`);
 
     // Test 2: Rotation limit test (Create 15 dummy log files in HIGH_SCORE_LOG_DIR and verify max 10 retained)
     console.log("\n[Test 2] Testing log file rotation limit (max 10 files)...");
     
-    // Ensure directory exists
-    if (!fs.existsSync(HIGH_SCORE_LOG_DIR)) {
-        fs.mkdirSync(HIGH_SCORE_LOG_DIR, { recursive: true });
-    }
-
-    // Clean directory first for clean test state
+    // Clean directory for rotation test
     const existing = fs.readdirSync(HIGH_SCORE_LOG_DIR);
     for (const file of existing) {
         fs.unlinkSync(path.join(HIGH_SCORE_LOG_DIR, file));
@@ -55,9 +67,8 @@ async function testHighScoreLogger() {
     // Create 15 dummy files with distinct modified times
     const now = Date.now();
     for (let i = 1; i <= 15; i++) {
-        const dummyPath = path.join(HIGH_SCORE_LOG_DIR, `dummy_log_${String(i).padStart(2, "0")}.log`);
+        const dummyPath = path.join(HIGH_SCORE_LOG_DIR, `high_score_dummy_${String(i).padStart(2, "0")}.log`);
         fs.writeFileSync(dummyPath, `Dummy log ${i}\n`);
-        // Set distinct modified time (i seconds ago)
         const fileTime = new Date(now + i * 1000);
         fs.utimesSync(dummyPath, fileTime, fileTime);
     }
@@ -76,26 +87,20 @@ async function testHighScoreLogger() {
         process.exit(1);
     }
 
-    // Verify oldest files (dummy_log_01 to dummy_log_05) were deleted and newest (06 to 15) retained
-    if (filesAfter.includes("dummy_log_01.log") || filesAfter.includes("dummy_log_05.log")) {
+    // Verify oldest files (dummy_01 to dummy_05) were deleted and newest (06 to 15) retained
+    if (filesAfter.includes("high_score_dummy_01.log") || filesAfter.includes("high_score_dummy_05.log")) {
         console.error("❌ Test 2 FAILED: Oldest files were not deleted during rotation!");
         process.exit(1);
     }
 
-    if (!filesAfter.includes("dummy_log_15.log") || !filesAfter.includes("dummy_log_06.log")) {
+    if (!filesAfter.includes("high_score_dummy_15.log") || !filesAfter.includes("high_score_dummy_06.log")) {
         console.error("❌ Test 2 FAILED: Newest files were deleted unexpectedly!");
         process.exit(1);
     }
 
     console.log("✅ [Test 2] Max 10 files rotation verified successfully!");
-
-    // Clean up dummy test files and log a fresh high score
-    for (const file of filesAfter) {
-        fs.unlinkSync(path.join(HIGH_SCORE_LOG_DIR, file));
-    }
-    logHighScore(fullLogMessage);
-
     console.log("\n✅ ALL HIGH SCORE LOGGER TESTS PASSED SUCCESSFULLY!");
 }
 
 testHighScoreLogger();
+
