@@ -22,6 +22,7 @@ export interface ConfigType {
     DAILY_LOSS_LIMIT: number,
     MAX_CONCURRENT_TRADES: number,
     CAPITAL_AMOUNT: number,
+    CURRENCY?: 'USD' | 'INR',
     TRADING_MODE: "conservative" | "balanced" | "aggressive" | "meme"
     SL_TRIGGER_BUFFER_PERCENT: number,
     SL_LIMIT_BUFFER_PERCENT: number;

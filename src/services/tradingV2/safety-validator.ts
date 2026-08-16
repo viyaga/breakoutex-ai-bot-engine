@@ -12,6 +12,7 @@ export class SafetyValidator {
         const symbol = c.SYMBOL;
 
         // ───────────────── DAILY LOSS CHECK ─────────────────
+        const currSym = c.CURRENCY === 'INR' ? '₹' : '$';
         const dailyLossLimitUSD =
             state.dailyLossLimitUSD || c.CAPITAL_AMOUNT * (c.DAILY_LOSS_LIMIT / 100);
         if (
@@ -20,9 +21,9 @@ export class SafetyValidator {
             dailyLossLimitUSD > 0
         ) {
             skipLogger.warn(
-                `[DailyLoss] SKIP: Daily loss limit reached for ${symbol}. Current Loss: $${Math.abs(
+                `[DailyLoss] SKIP: Daily loss limit reached for ${symbol}. Current Loss: ${currSym}${Math.abs(
                     state.dailyPnl
-                ).toFixed(2)}, Limit: $${dailyLossLimitUSD.toFixed(2)} (${c.DAILY_LOSS_LIMIT}%)`
+                ).toFixed(2)}, Limit: ${currSym}${dailyLossLimitUSD.toFixed(2)} (${c.DAILY_LOSS_LIMIT}%)`
             );
             return false;
         }

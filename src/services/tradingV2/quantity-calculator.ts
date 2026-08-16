@@ -7,7 +7,8 @@ export class QuantityCalculator {
         cronLogger: any,
         skipLogger: any
     ): boolean {
-        // ───────────────── CONVERT USD TO LOTS ─────────────────
+        // ───────────────── CONVERT MARGIN TO LOTS ─────────────────
+        const currSym = c.CURRENCY === 'INR' ? '₹' : '$';
         if (c.MIN_TRADE_SIZE && currentPrice > 0) {
             const oldQty = c.INITIAL_BASE_QUANTITY;
             c.INITIAL_BASE_QUANTITY = Math.max(
@@ -15,7 +16,7 @@ export class QuantityCalculator {
                 Math.floor((c.MIN_TRADE_SIZE * c.LEVERAGE) / (currentPrice * c.LOT_SIZE))
             );
             cronLogger.info(
-                `[Config] Converted MIN_TRADE_SIZE margin ($${c.MIN_TRADE_SIZE}) to INITIAL_BASE_QUANTITY (${c.INITIAL_BASE_QUANTITY} lots) using ${c.LEVERAGE}x leverage. Previous: ${oldQty}`
+                `[Config] Converted MIN_TRADE_SIZE margin (${currSym}${c.MIN_TRADE_SIZE}) to INITIAL_BASE_QUANTITY (${c.INITIAL_BASE_QUANTITY} lots) using ${c.LEVERAGE}x leverage. Previous: ${oldQty}`
             );
         }
         if (c.MAX_TRADE_SIZE && currentPrice > 0) {
@@ -25,7 +26,7 @@ export class QuantityCalculator {
                 Math.floor((c.MAX_TRADE_SIZE * c.LEVERAGE) / (currentPrice * c.LOT_SIZE))
             );
             cronLogger.info(
-                `[Config] Converted MAX_TRADE_SIZE margin ($${c.MAX_TRADE_SIZE}) to MAX_QUANTITY (${c.MAX_QUANTITY} lots) using ${c.LEVERAGE}x leverage. Previous: ${oldMaxQty}`
+                `[Config] Converted MAX_TRADE_SIZE margin (${currSym}${c.MAX_TRADE_SIZE}) to MAX_QUANTITY (${c.MAX_QUANTITY} lots) using ${c.LEVERAGE}x leverage. Previous: ${oldMaxQty}`
             );
         }
 
